@@ -14,11 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from build import soutil
 import sys
 import getopt
 import os
 
+from ovs_build_helpers import soutil
 
 def parse_include_dirs():
     include_dirs = []
