@@ -1640,6 +1640,10 @@ collect_lr_routes(struct ic_context *ctx,
     const struct icnbrec_transit_switch *t_sw;
     for (int i = 0; i < ic_lr->n_isb_pbs; i++) {
         isb_pb = ic_lr->isb_pbs[i];
+        if (!isb_pb->gateway[0]) {
+            continue;
+        }
+
         key = icnbrec_transit_switch_index_init_row(
             ctx->icnbrec_transit_switch_by_name);
         icnbrec_transit_switch_index_set_name(key, isb_pb->transit_switch);
