@@ -268,6 +268,47 @@ add_bridge_mappings(struct ovsdb_idl_txn *ovs_idl_txn,
                                 br_int, existing_ports, NULL,
                                 &bridge_mappings, "localnet",
                                 "ovn-localnet-port", local_datapaths, false);
+
+    const struct ovsrec_bridge *ovs_bridge;
+    struct shash_node *bridge_node;
+    // const char *bridge;
+    SHASH_FOR_EACH_SAFE (bridge_node, &bridge_mappings) {
+        ovs_bridge = bridge_node->data;
+        // ovs_bridge = get_bridge(bridge_table, bridge);
+        // struct ovsrec_bridge *br_ln = shash_find_data(bridge_mappings, network);
+        for (size_t i = 0; i < src->n_ports; i++) {
+            if (strcmp(src->ports[i]->type, "patch")) {
+                /* Patch port already exists on 'src'. */
+                // shash_find_and_delete(existing_ports, src->ports[i]->name);
+                // return;
+            }
+        }
+
+        // bridge = bridge_node->data;
+        // shash_delete(&existing_ports, port_node);
+        /* Wait for some iterations before really deleting any patch ports,
+         * because with conditional monitoring it is possible that related SB
+         * data is not completely downloaded yet after last restart of
+         * ovn-controller.  Otherwise it may cause unncessary dataplane
+         * interruption during restart/upgrade. */
+        // if (!daemon_started_recently()) {
+        //     remove_port(bridge_table, port);
+        // }
+
+    }
+
+    // const struct ovsrec_bridge *ovs_bridge;
+    // char *network, *bridge = cur;
+
+    // network = strsep(&bridge, ":");
+    // if (!bridge || !*network || !*bridge) {
+    //     VLOG_ERR("Invalid ovn-bridge-mappings configuration: '%s'",
+    //                 mappings_cfg);
+    //     break;
+    // }
+
+    // ovs_bridge = get_bridge(bridge_table, bridge);
+
     shash_destroy(&bridge_mappings);
 }
 
