@@ -14251,7 +14251,7 @@ lrouter_check_nat_entry(struct ovn_datapath *od, const struct nbrec_nat *nat,
                              "with external_ip: %s configured on logical "
                              "router: %s with multiple distributed gateway "
                              "ports", nat->external_ip, od->nbr->name);
-                return -EINVAL;
+                // return -EINVAL;
             }
         }
     } else {
