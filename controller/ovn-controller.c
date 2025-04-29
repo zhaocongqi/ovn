@@ -5119,6 +5119,28 @@ route_runtime_data_handler(struct engine_node *node, void *data)
                  * request recompute. */
                 return false;
             }
+
+            /* When the port is removed we went from local to remote,
+             * otherwise it's from remote to local. */
+            struct sset *tracked_ports =
+                lport->tracked_type == TRACKED_RESOURCE_REMOVED
+                ? &re_data->tracked_ports_local
+                : &re_data->tracked_ports_remote;
+
+            const char *name = lport->pb->logical_port;
+            if (sset_contains(tracked_ports, name)) {
+                /* XXX: Until we get I-P support for route exchange we need to
+                 * request recompute. */
+                return false;
+            }
+
+            const char *dp_name = smap_get(&lport->pb->options,
+                                           "distributed-port");
+            if (dp_name && sset_contains(tracked_ports, dp_name)) {
+                /* XXX: Until we get I-P support for route exchange we need to
+                 * request recompute. */
+                return false;
+            }
         }
     }
 
@@ -6324,7 +6346,8 @@ main(int argc, char *argv[])
                                     &runtime_data->local_active_ports_ipv6_pd,
                                     &runtime_data->local_active_ports_ras,
                                     ovsrec_open_vswitch_table_get(
-                                            ovs_idl_loop.idl));
+                                            ovs_idl_loop.idl),
+                                    ovnsb_idl_loop.cur_cfg);
                         stopwatch_stop(PINCTRL_RUN_STOPWATCH_NAME,
                                        time_msec());
                         mirror_run(ovs_idl_txn,
@@ -6488,9 +6511,20 @@ main(int argc, char *argv[])
             poll_immediate_wake();
         }
 
-        if (!ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop)) {
+        int ovnsb_txn_status = ovsdb_idl_loop_commit_and_wait(&ovnsb_idl_loop);
+        if (!ovnsb_txn_status) {
             VLOG_INFO("OVNSB commit failed, force recompute next time.");
             engine_set_force_recompute_immediate();
+        } else if (ovnsb_txn_status == 1) {
+            if (ovnsb_idl_loop.next_cfg == INT64_MAX) {
+                ovnsb_idl_loop.next_cfg = 0;
+            } else {
+                ovnsb_idl_loop.next_cfg++;
+            }
+        } else if (ovnsb_txn_status == -1) {
+            /* The commit is still in progress */
+        } else {
+            OVS_NOT_REACHED();
         }
 
         int ovs_txn_status = ovsdb_idl_loop_commit_and_wait(&ovs_idl_loop);
