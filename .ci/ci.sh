@@ -54,6 +54,9 @@ function archive_logs() {
         cp -r $CONTAINER_WORKDIR/tests/system-*-testsuite.* \
         $log_dir || true \
         && \
+        cp -r $CONTAINER_WORKDIR/tests/upgrade-testsuite.* \
+        $log_dir || true \
+        && \
         chmod -R +r $log_dir \
         &&
         tar -czvf $CONTAINER_WORKSPACE/logs.tgz $log_dir
@@ -102,7 +105,7 @@ function run_tests() {
         ARCH=$ARCH CC=$CC LIBS=$LIBS OPTS=$OPTS TESTSUITE=$TESTSUITE \
         TEST_RANGE=$TEST_RANGE SANITIZERS=$SANITIZERS DPDK=$DPDK \
         RECHECK=$RECHECK UNSTABLE=$UNSTABLE TIMEOUT=$TIMEOUT \
-        ./.ci/linux-build.sh
+        BASE_VERSION=$BASE_VERSION ./.ci/linux-build.sh
     "
 }
 

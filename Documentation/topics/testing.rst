@@ -293,3 +293,177 @@ of these cached objects, be sure to rebuild the test.
 
 The cached objects are stored under the relevant folder in
 ``tests/perf-testsuite.dir/cached``.
+
+OVN Upgrade Testing
+~~~~~~~~~~~~~~~~~~~
+
+Overview
+++++++++
+
+OVN upgrade tests validate that the system continues to function correctly
+during rolling upgrades, specifically testing the intermediate state where
+ovn-controller is upgraded before ovn-northd and the databases.
+
+The upgrade tests run the system test suite from an older OVN version using
+binaries (ovn-controller, ovs-vswitchd, etc.) from the current development
+version, ensuring backward compatibility.
+
+Running Upgrade Tests Locally
++++++++++++++++++++++++++++++
+
+Basic usage::
+
+    $ make check-upgrade
+
+This will test upgrades from branch-24.03 (the default base version).
+
+Specify a different base version::
+
+    $ make check-upgrade BASE_VERSION=branch-24.09
+
+Run a specific range of tests::
+
+    $ make check-upgrade BASE_VERSION=branch-25.03 TESTSUITEFLAGS="1-100"
+
+Run only unstable tests::
+
+    $ make check-upgrade UNSTABLE=1 TESTSUITEFLAGS="-k unstable"
+
+Environment Variables
++++++++++++++++++++++
+
+*BASE_VERSION*
+  Git branch to use as the base version (default: ``branch-24.03``)
+
+  - branch-24.03: the local repo will be used as the source repo.
+  - origin/branch-24.03: the local repo origin is used as the source repo.
+  - If branch is not found in local repo, it will be searched in its origin
+    (e.g. private github repo or ovn_org repo). If not found in private
+    github repo, it will be searched in ovn_org repo.
+
+*TESTSUITEFLAGS*
+  Test range to run, using autotest syntax (default: ``1-``, meaning all tests)
+
+  - ``1-100`` - Run tests 1 through 100
+  - ``50-`` - Run tests 50 and above
+  - ``-k unstable`` - Run tests with 'unstable' keyword
+
+  Additional flags to pass to the testsuite. Use ``-d`` to keep test
+  directories on success for debugging.
+
+*UNSTABLE*
+  Set to ``1`` to run unstable tests (default: disabled)
+
+How Upgrade Tests Work
+++++++++++++++++++++++
+
+The upgrade test workflow:
+
+1. *Save Current Binaries*
+
+   The test framework saves binaries from your current working tree:
+
+   - ``ovn-controller``
+   - ``ovs-vswitchd``, ``ovsdb-server``
+   - ``ovs-vsctl``, ``ovs-ofctl``, ``ovs-appctl``, ``ovs-dpctl``
+   - Flow table definitions from ``controller/lflow.h``
+
+2. *Clone and Checkout Base Version*
+
+   Creates ``upgrade-testsuite.dir/ovn-upgrade-base/`` and checks out the
+   specified base version.
+
+3. *Patch Old Tests*
+
+   - Updates hardcoded flow table numbers if tables were renumbered
+   - Adds schema compatibility filters to suppress expected warnings
+   - Replaces OFTABLE_* m4 macros with current values
+
+4. *Build Base Version*
+
+   Builds the base version twice:
+
+   - With patched ``lflow.h`` to create hybrid ``ovn-debug`` tool
+   - With original ``lflow.h`` for proper ``ovn-northd`` and ``ovn-nbctl``
+
+5. *Swap Binaries*
+
+   Replaces the base version's binaries with current versions:
+
+   - Base version: ``ovn-northd``, ``ovn-nbctl`` (test infrastructure)
+   - Current version: ``ovn-controller``, ``ovs-vswitchd``, ``ovsdb-server``
+
+6. *Run Tests*
+
+   Executes the system test suite from the base version with the mixed
+   binary set.
+
+Interpreting Test Failures
+++++++++++++++++++++++++++
+
+Test failures during upgrade testing can indicate:
+
+*Backward Compatibility Issues*
+  The new ovn-controller is incompatible with the old northd/databases.
+  This is a critical issue that must be fixed before release.
+
+*Flow Generation Changes*
+  If flow table contents changed intentionally, the (old) test may need the
+  ``TAG_TEST_NOT_UPGRADABLE`` tag.
+
+Debugging Failed Tests
+++++++++++++++++++++++
+
+On failure, the test directory is preserved in ``upgrade-testsuite.dir/``.
+
+Check the logs::
+
+    $ upgrade-testsuite.dir/git.log  # Git operations
+    $ upgrade-testsuite.dir/build-base.log  # Build output
+    $ upgrade-testsuite.dir/ovn-upgrade-base/tests/system-kmod-testsuite.log
+
+Keep test directory for debugging::
+
+    $ make check-upgrade TESTSUITEFLAGS="-d"
+
+Marking Tests as Non-Upgradable
++++++++++++++++++++++++++++++++
+
+Some tests cannot run in upgrade scenarios: tests for features not yet
+fully present in the base version.
+
+Mark these tests with the ``TAG_TEST_NOT_UPGRADABLE`` keyword::
+
+    AT_SETUP([test that checks flow details])
+    AT_KEYWORDS([TAG_TEST_NOT_UPGRADABLE])
+    # ... test code ...
+    AT_CLEANUP
+
+These tests will be skipped during upgrade testing but run normally otherwise.
+
+CI Integration
+++++++++++++++
+
+Upgrade tests run automatically in GitHub Actions:
+
+*On Schedule (Weekly)*
+  - Tests all supported versions (24.03, 24.09, 25.03, 25.09)
+
+Implementation Details
+++++++++++++++++++++++
+
+Test are run locally through ``check-upgrade`` Makefile target.
+The flow for make check-upgrade is:
+
+- Makefile
+- ci/ovn_upgrade_test.py: run_upgrade_workflow, run_tests
+- ci/linux-build.sh(TESTSUITE=system-test)
+- execute_system_tests "check-kernel" "system-kmod-testsuite.log"
+- run_system_tests check-kernel
+
+Through the ci the flow is:
+
+- ci.sh: run_in_container ./.ci/linux-build.sh (TESTSUITE=upgrade-test)
+- execute_system_tests "check-upgrade" "system-kmod-testsuite.log"
+- run_system_tests check-upgrade
+- Back to make check-upgrade-flow.

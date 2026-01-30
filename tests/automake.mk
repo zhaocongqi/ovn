@@ -386,3 +386,17 @@ clean-pki:
 	rm -f tests/pki/stamp
 	rm -rf tests/pki
 endif
+
+# Upgrade test support
+# Run via: make check-upgrade BASE_VERSION=branch-24.03 TESTSUITEFLAGS="1-100"
+BASE_VERSION ?= branch-24.03
+
+check-upgrade: all
+	@mkdir -p upgrade-testsuite.dir
+	@echo "Running upgrade tests from $(BASE_VERSION)..."
+	@echo "CC=$(CC) OPTS=$(OPTS) TESTSUITEFLAGS=$(TESTSUITEFLAGS) UNSTABLE=$(UNSTABLE)"
+	@BASE_VERSION="$(BASE_VERSION)" \
+	 TESTSUITEFLAGS="$(TESTSUITEFLAGS)" \
+	 UNSTABLE="$(UNSTABLE)" \
+	 PYTHONPATH="$(srcdir)/.ci:$$PYTHONPATH" \
+	$(PYTHON3) "$(srcdir)/.ci/ovn_upgrade_test.py"

@@ -89,6 +89,8 @@ EXTRA_DIST = \
 	.ci/ci.sh \
 	.ci/linux-build.sh \
 	.ci/linux-util.sh \
+	.ci/ovn_upgrade_test.py \
+	.ci/ovn_upgrade_utils.py \
 	.ci/osx-build.sh \
 	.ci/osx-prepare.sh \
 	.ci/ovn-kubernetes/prepare.sh \
@@ -97,6 +99,7 @@ EXTRA_DIST = \
 	.github/workflows/test.yml \
 	.github/workflows/ovn-kubernetes.yml \
 	.github/workflows/ovn-fake-multinode-tests.yml \
+	.github/workflows/ovn-upgrade-tests.yml \
 	.readthedocs.yaml \
 	boot.sh \
 	$(MAN_FRAGMENTS) \

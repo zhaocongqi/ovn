@@ -1,7 +1,12 @@
 #!/bin/bash
 
 set -o errexit
-set -x
+
+# Enable debug output for CI, optional for local
+NO_DEBUG=${NO_DEBUG:-0}
+if [ "$NO_DEBUG" = "0" ]; then
+    set -x
+fi
 
 ARCH=${ARCH:-"x86_64"}
 USE_SPARSE=${USE_SPARSE:-"yes"}
@@ -181,17 +186,23 @@ function run_system_tests()
 
     if ! sudo timeout -k 5m -v $TIMEOUT make $JOBS $type \
         TESTSUITEFLAGS="$TEST_RANGE" RECHECK=$RECHECK \
-        SKIP_UNSTABLE=$SKIP_UNSTABLE; then
-        # $log_file is necessary for debugging.
-        cat tests/$log_file
+        SKIP_UNSTABLE=$SKIP_UNSTABLE UPGRADE_TEST=$UPGRADE_TEST \
+        BASE_VERSION=$BASE_VERSION; then
+        # Suppress output locally when NO_DEBUG not 0.
+        if [ "$NO_DEBUG" = "0" ]; then
+            cat tests/$log_file
+        fi
         return 1
     fi
 }
 
 function execute_system_tests()
 {
-    configure_ovn $OPTS
-    make $JOBS || { cat config.log; exit 1; }
+    # Upgrade tests build separately
+    if [ "$UPGRADE_TEST" != "yes" ]; then
+        configure_ovn $OPTS
+        make $JOBS || { cat config.log; exit 1; }
+    fi
 
     local stable_rc=0
     local unstable_rc=0
@@ -201,8 +212,12 @@ function execute_system_tests()
     fi
 
     if [ "$UNSTABLE" ]; then
-        if ! SKIP_UNSTABLE=no TEST_RANGE="-k unstable" RECHECK=yes \
-                run_system_tests $@; then
+        if [[ "$TEST_RANGE" == *"-d"* ]]; then
+            TEST_RANGE="-k unstable -d"
+        else
+            TEST_RANGE="-k unstable"
+        fi
+        if ! SKIP_UNSTABLE=no RECHECK=yes run_system_tests $@; then
             unstable_rc=1
         fi
     fi
@@ -237,6 +252,10 @@ if [ "$TESTSUITE" ]; then
         # The dpdk tests need huge page memory, so reserve some 2M pages.
         sudo bash -c "echo 2048 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages"
         execute_system_tests "check-system-dpdk" "system-dpdk-testsuite.log"
+        ;;
+
+        "upgrade-test")
+        execute_system_tests "check-upgrade" "system-kmod-testsuite.log"
         ;;
     esac
 else
