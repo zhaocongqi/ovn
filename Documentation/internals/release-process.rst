@@ -178,19 +178,9 @@ OVN version.
 Release Calendar
 ----------------
 
-The 2025 timetable is shown below. Note that these dates are not set in stone.
+The 2026 timetable is shown below. Note that these dates are not set in stone.
 If extenuating circumstances arise, a release may be delayed from its target
 date.
-
-+---------+-------------+-----------------+---------+
-| Release | Soft Freeze | Branch Creation | Release |
-+---------+-------------+-----------------+---------+
-| 25.03.0 | Jan 24      | Feb 7           | Mar 7   |
-+---------+-------------+-----------------+---------+
-| 25.09.0 | Jul 25      | Aug 8           | Sep 5   |
-+---------+-------------+-----------------+---------+
-
-Below is the 2026 timetable
 
 +---------+-------------+-----------------+---------+
 | Release | Soft Freeze | Branch Creation | Release |
@@ -198,6 +188,18 @@ Below is the 2026 timetable
 | 26.03.0 | Jan 23      | Feb 20          | Mar 20  |
 +---------+-------------+-----------------+---------+
 | 26.09.0 | Jul 24      | Aug 21          | Sep 18  |
++---------+-------------+-----------------+---------+
+
+Below is the 2027 timetable. Note that unlike in previous years, this
+calendar proposes Tuesday releases instead of Friday releases. However,
+soft freeze and branching dates are still on Fridays.
+
++---------+-------------+-----------------+---------+
+| Release | Soft Freeze | Branch Creation | Release |
++---------+-------------+-----------------+---------+
+| 27.03.0 | Jan 22      | Feb 19          | Mar 23  |
++---------+-------------+-----------------+---------+
+| 27.09.0 | Jul 23      | Aug 20          | Sep 21  |
 +---------+-------------+-----------------+---------+
 
 Contact
