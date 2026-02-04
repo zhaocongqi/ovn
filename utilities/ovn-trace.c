@@ -2675,9 +2675,13 @@ execute_ct_lb(const struct ovnact_ct_lb *ct_lb,
         ct_lb_flow.ct_state |= next_ct_state(&comment);
     }
 
+    const char *action_type =
+        ct_lb->ovnact.type == OVNACT_CT_LB_MARK ? "ct_lb_mark" :
+        ct_lb->ovnact.type == OVNACT_CT_LB_MARK_LOCAL ? "ct_lb_mark_local" :
+        "ct_lb";
+
     struct ovntrace_node *node = ovntrace_node_append(
-        super, OVNTRACE_NODE_TRANSFORMATION, "%s%s",
-        ct_lb->ovnact.type == OVNACT_CT_LB_MARK ? "ct_lb_mark" : "ct_lb",
+        super, OVNTRACE_NODE_TRANSFORMATION, "%s%s", action_type,
         ds_cstr_ro(&comment));
     ds_destroy(&comment);
 
@@ -3332,6 +3336,12 @@ trace_actions(const struct ovnact *ovnacts, size_t ovnacts_len,
         case OVNACT_CT_LB_MARK:
             execute_ct_lb(ovnact_get_CT_LB_MARK(a), dp, uflow, pipeline,
                           super);
+            break;
+
+        case OVNACT_CT_LB_MARK_LOCAL:
+            /* Treat all ports as local. */
+            execute_ct_lb(ovnact_get_CT_LB_MARK_LOCAL(a), dp, uflow,
+                          pipeline, super);
             break;
 
         case OVNACT_SELECT:

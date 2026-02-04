@@ -2375,6 +2375,38 @@ mirror("lsp1");
 mirror(lsp1);
     Syntax error at `lsp1' expecting port name string.
 
+ct_lb_mark_local(backends="lsp1":192.168.0.101);
+    encodes as group:25
+    uses group: id(25), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.0.101),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
+    has prereqs ip
+
+ct_lb_mark_local(backends="lsp1":192.168.0.101:10880);
+    encodes as group:26
+    uses group: id(26), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.0.101:10880),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
+    has prereqs ip
+
+ct_lb_mark_local(backends="lsp1":192.168.0.101:10880; hash_fields="eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst");
+    encodes as group:27
+    uses group: id(27), name(type=select,selection_method=hash,fields(eth_src,eth_dst,ip_src,ip_dst,sctp_src,sctp_dst),bucket=bucket_id=0,weight:100,actions=ct(nat(dst=192.168.0.101:10880),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
+    has prereqs ip
+
+ct_lb_mark_local(backends=192.168.0.101:80);
+    Syntax error at `192.168.0.101' expecting logical port name for distributed load balancer.
+
+ct_lb_mark_local(backends=lsp1:192.168.0.101:10880);
+    Syntax error at `lsp1' expecting logical port name for distributed load balancer.
+
+# add hash fields parsing
+ct_lb_mark_local(backends="lsp1":fd0f::2);
+    encodes as group:28
+    uses group: id(28), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=fd0f::2),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
+    has prereqs ip
+
+ct_lb_mark_local(backends="lsp1":[[fd0f::2]]:80);
+    encodes as group:29
+    uses group: id(29), name(type=select,selection_method=dp_hash,bucket=bucket_id=0,weight:100,actions=ct(nat(dst=[[fd0f::2]]:80),commit,table=oflow_in_table,zone=NXM_NX_REG13[[0..15]],exec(set_field:2/2->ct_mark)))
+    has prereqs ip
+
 # Miscellaneous negative tests.
 ;
     Syntax error at `;'.

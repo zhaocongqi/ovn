@@ -3898,6 +3898,7 @@ init_lflow_ctx(struct engine_node *node,
     l_ctx_in->template_vars = &template_vars->local_templates;
     l_ctx_in->collector_ids = &fo->collector_ids;
     l_ctx_in->local_lbs = &lb_data->local_lbs;
+    l_ctx_in->lbinding_lports = &rt_data->lbinding_data.bindings;
 
     l_ctx_out->flow_table = &fo->flow_table;
     l_ctx_out->group_table = &fo->group_table;
