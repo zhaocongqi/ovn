@@ -166,6 +166,7 @@ lb_data_load_balancer_handler(struct engine_node *node, void *data)
             add_crupdated_lb_to_tracked_data(lb, trk_lb_data,
                                              lb->health_checks);
             trk_lb_data->has_routable_lb |= lb->routable;
+            trk_lb_data->has_distributed_lb |= lb->is_distributed;
             continue;
         }
 
@@ -180,6 +181,7 @@ lb_data_load_balancer_handler(struct engine_node *node, void *data)
             add_deleted_lb_to_tracked_data(lb, trk_lb_data,
                                            lb->health_checks);
             trk_lb_data->has_routable_lb |= lb->routable;
+            trk_lb_data->has_distributed_lb |= lb->is_distributed;
         } else {
             /* Load balancer updated. */
             bool health_checks = lb->health_checks;
@@ -189,11 +191,13 @@ lb_data_load_balancer_handler(struct engine_node *node, void *data)
             sset_swap(&lb->ips_v6, &old_ips_v6);
             enum lb_neighbor_responder_mode neigh_mode = lb->neigh_mode;
             bool routable = lb->routable;
+            bool distributed_mode = lb->is_distributed;
             ovn_northd_lb_reinit(lb, tracked_lb);
             health_checks |= lb->health_checks;
             struct crupdated_lb *clb = add_crupdated_lb_to_tracked_data(
                 lb, trk_lb_data, health_checks);
             trk_lb_data->has_routable_lb |= lb->routable;
+            trk_lb_data->has_distributed_lb |= lb->is_distributed;
 
             /* Determine the inserted and deleted vips and store them in
              * the tracked data. */
@@ -224,6 +228,10 @@ lb_data_load_balancer_handler(struct engine_node *node, void *data)
             }
             if (neigh_mode != lb->neigh_mode) {
                 /* If neigh_mode is updated trigger a full recompute. */
+                return EN_UNHANDLED;
+            }
+            if (distributed_mode != lb->is_distributed) {
+                /* If distributed_mode is updated trigger a full recompute. */
                 return EN_UNHANDLED;
             }
         }
@@ -687,6 +695,7 @@ handle_od_lb_changes(struct nbrec_load_balancer **nbrec_lbs,
                                                               lb_uuid);
                 ovs_assert(lb);
                 trk_lb_data->has_routable_lb |= lb->routable;
+                trk_lb_data->has_distributed_lb |= lb->is_distributed;
             }
         }
 

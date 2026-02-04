@@ -98,6 +98,9 @@ Post v25.09.0
      reserving an unused IP from the backend's subnet. This change allows
      using LRP IPs directly, eliminating the need to reserve additional IPs
      per backend port.
+  - Add "distributed" option for load balancer, that forces traffic to be
+    routed only to backend instances running locally on the same chassis
+    it arrives on.
 
 OVN v25.09.0 - xxx xx xxxx
 --------------------------

@@ -74,8 +74,12 @@ struct ovn_northd_lb {
     /* Indicates if the load balancer has health checks configured. */
     bool health_checks;
 
-    char *hairpin_snat_ip;
+    /* Indicates if distributed option is enabled for load balancer. */
+    bool is_distributed;
+
     bool use_stateless_nat;
+
+    char *hairpin_snat_ip;
 };
 
 /* ovn-northd specific backend information. */
@@ -91,6 +95,7 @@ struct ovn_northd_lb_backend {
     bool health_check;
      /* Set to true if port does not locate in local AZ. */
     bool remote_backend;
+    bool distributed_backend;
     /* Logical port to which the ip belong to. */
     char *logical_port;
     /* Source IP address to be used for service monitoring. */

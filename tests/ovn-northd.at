@@ -18286,16 +18286,18 @@ AT_CLEANUP
 ])
 
 OVN_FOR_EACH_NORTHD_NO_HV([
-AT_SETUP([ip_port_mappings validation])
+AT_SETUP([ip_port_mappings validation: IPv4])
 ovn_start
 
 # ip_port_mappings syntax: ip:lport_name:src_ip:<az_name>(for remote lports)
 
 check ovn-nbctl ls-add ls1
+check ovn-nbctl lr-add lr1
+
+check as northd ovn-appctl -t ovn-northd vlog/disable-rate-limit
 
 check ovn-nbctl lb-add lb1_ipv4 1.1.1.1:80 192.168.0.1:10880,192.168.0.2:10880,192.168.0.3:10880
-AT_CHECK([ovn-nbctl --wait=sb \
-          -- --id=@hc create Load_Balancer_Health_Check vip="1.1.1.1\:80" \
+AT_CHECK([ovn-nbctl --id=@hc create Load_Balancer_Health_Check vip="1.1.1.1\:80" \
              options:failure_count=100 \
           -- add Load_Balancer lb1_ipv4 health_check @hc | uuidfilt], [0], [<0>
 ])
@@ -18318,22 +18320,16 @@ check_column false sb:Service_Monitor remote logical_port=lport1
 # Empty src_ip.
 check ovn-nbctl clear load_balancer lb1_ipv4 ip_port_mappings
 check ovn-nbctl set load_balancer lb1_ipv4 ip_port_mappings:192.168.0.1=lport1:
-OVS_WAIT_UNTIL([grep "Invalid svc mon src IP" northd/ovn-northd.log])
 check_row_count sb:Service_Monitor 0
-echo > northd/ovn-northd.log
 
-# Uncorrect ip_address.
+# Incorrect ip_address.
 check ovn-nbctl set load_balancer lb1_ipv4 ip_port_mappings:invalid=lport2_az1:2.2.2.9
-OVS_WAIT_UNTIL([grep "bad IP address" northd/ovn-northd.log])
-echo > northd/ovn-northd.log
-
+check_row_count sb:Service_Monitor 0
 check ovn-nbctl set load_balancer lb1_ipv4 ip_port_mappings:2.2.2.1=lport2_az1:invalid
-OVS_WAIT_UNTIL([grep "bad IP address" northd/ovn-northd.log])
-echo > northd/ovn-northd.log
-
+check_row_count sb:Service_Monitor 0
 check ovn-nbctl set load_balancer lb1_ipv4 ip_port_mappings:2.2.2.1=:2.2.2.9
-OVS_WAIT_UNTIL([grep "bad IP address" northd/ovn-northd.log])
-echo > northd/ovn-northd.log
+check_row_count sb:Service_Monitor 0
+OVS_WAIT_UNTIL([test $(grep -c "Invalid svc mon src IP" northd/ovn-northd.log) -eq 4])
 
 check ovn-nbctl set load_balancer lb1_ipv4 ip_port_mappings:192.168.0.1=lport1:192.168.0.99:az_name
 
@@ -18345,22 +18341,169 @@ check_column "192.168.0.99" sb:Service_Monitor src_ip logical_port=lport1
 check_column false sb:Service_Monitor ic_learned logical_port=lport1
 check_column true sb:Service_Monitor remote logical_port=lport1
 
-uuid=$(ovn-sbctl -d bare --no-headings --columns _uuid find Service_Monitor logical_port=lport1)
+hc_uuid=$(fetch_column sb:Service_Monitor _uuid logical_port=lport1)
 
 # Check az_name presence in options.
-AT_CHECK([ovn-sbctl get Service_Monitor ${uuid} options:az-name],
+AT_CHECK([ovn-sbctl get Service_Monitor ${hc_uuid} options:az-name],
 [0], [az_name
 ])
 
-AT_CHECK([ovn-sbctl get Service_Monitor ${uuid} options:failure_count],
+AT_CHECK([ovn-sbctl get Service_Monitor ${hc_uuid} options:failure_count],
 [0], ["100"
 ])
 
 # Empty availability zone name.
 check ovn-nbctl set load_balancer lb1_ipv4 ip_port_mappings:192.168.0.1=lport1:192.168.0.99:
 check_row_count sb:Service_Monitor 0
-
 OVS_WAIT_UNTIL([grep "Empty AZ name specified" northd/ovn-northd.log])
+
+check ovn-nbctl lb-del lb1_ipv4
+
+# Check correct setup of distributed load balancers.
+check ovn-nbctl lb-add lb_distubuted 1.1.1.1:80 192.168.0.1:10880,192.168.0.2:10880
+check ovn-nbctl lr-lb-add lr1 lb_distubuted
+check ovn-nbctl --wait=sb set load_balancer lb_distubuted options:distributed=true
+
+# Check that load balancer does not work in a distributed mode - there is no ip_port_mappings setting
+ovn-sbctl lflow-list lr1 > lr1_lflow
+AT_CHECK([cat lr1_lflow | grep lr_in_dnat | grep priority=120 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 1.1.1.1 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(drop;)
+])
+
+# Check if load balancer has only one backend available since the only one backend has ip_port_mappings
+check ovn-nbctl --wait=sb set load_balancer lb_distubuted ip_port_mappings:192.168.0.1=lport1
+ovn-sbctl lflow-list lr1 > lr1_lflow
+AT_CHECK([cat lr1_lflow | grep lr_in_dnat | grep priority=120 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 1.1.1.1 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(ct_lb_mark_local(backends="lport1":192.168.0.1:10880);)
+])
+
+check ovn-nbctl set load_balancer lb_distubuted ip_port_mappings:192.168.0.2=lport2
+ovn-sbctl lflow-list lr1 > lr1_lflow
+AT_CHECK([cat lr1_lflow | grep lr_in_dnat | grep priority=120 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 1.1.1.1 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(ct_lb_mark_local(backends="lport1":192.168.0.1:10880,"lport2":192.168.0.2:10880);)
+])
+
+# Check if health check is configured, ip_port_mappings must be provided.
+AT_CHECK([ovn-nbctl --wait=sb --id=@hc create Load_Balancer_Health_Check vip="1.1.1.1\:80" \
+             options:failure_count=100 \
+          -- add Load_Balancer . health_check @hc | uuidfilt], [0], [<0>
+])
+
+ovn-sbctl lflow-list lr1 > lr1_lflow
+AT_CHECK([cat lr1_lflow | grep lr_in_dnat | grep priority=120 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 1.1.1.1 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(drop;)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([ip_port_mappings validation: IPv6])
+ovn_start
+
+# ip_port_mappings syntax: ip:lport_name:src_ip:<az_name>(for remote lports)
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lr-add lr1
+check ovn-nbctl lsp-add ls1 lport1
+
+check as northd ovn-appctl -t ovn-northd vlog/disable-rate-limit
+check ovn-nbctl lb-add lb1 [[2001::a]]:80 [[2001::3]]:80,[[2002::3]]:80
+
+AT_CHECK([ovn-nbctl --wait=sb --id=@hc create Load_Balancer_Health_Check vip="\[\[2001\:\:a\]\]\:80" \
+             options:failure_count=100 \
+          -- add Load_Balancer . health_check @hc | uuidfilt], [0], [<0>
+])
+
+check_row_count sb:Service_Monitor 0
+check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:\"[[2001::3]]\"=\"lport1:[[2001::2]]\"
+
+check_row_count sb:Service_Monitor 1
+check_column "2001::3" sb:Service_Monitor ip logical_port=lport1
+check_column 80 sb:Service_Monitor port logical_port=lport1
+check_column tcp sb:Service_Monitor protocol logical_port=lport1
+check_column "2001::2" sb:Service_Monitor src_ip logical_port=lport1
+check_column false sb:Service_Monitor ic_learned logical_port=lport1
+check_column false sb:Service_Monitor remote logical_port=lport1
+check_column "" sb:Service_Monitor logical_input_port logical_port=lport1
+
+# Empty src_ip.
+check ovn-nbctl clear load_balancer lb1 ip_port_mappings
+check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:\"[[2001::3]]\"=\"lport1:\"
+check_row_count sb:Service_Monitor 0
+
+# Incorrect ip_address.
+check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:\"[[invalid]]\"=\"lport1:\"
+check_row_count sb:Service_Monitor 0
+check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:\"[[2001::3]]\"=\"lport1:invalid\"
+check_row_count sb:Service_Monitor 0
+OVS_WAIT_UNTIL([test $(grep -c "bad IP address" northd/ovn-northd.log) -eq 3])
+
+check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:\"[[2001::3]]\"=\"lport1:[[2001::2]]:az_name\"
+check_row_count sb:Service_Monitor 1
+check_column "2001::3" sb:Service_Monitor ip logical_port=lport1
+check_column 80 sb:Service_Monitor port logical_port=lport1
+check_column tcp sb:Service_Monitor protocol logical_port=lport1
+check_column "2001::2" sb:Service_Monitor src_ip logical_port=lport1
+check_column false sb:Service_Monitor ic_learned logical_port=lport1
+check_column true sb:Service_Monitor remote logical_port=lport1
+check_column "" sb:Service_Monitor logical_input_port logical_port=lport1
+
+hc_uuid=$(fetch_column sb:Service_Monitor _uuid logical_port=lport1)
+
+# Check az_name presence in options.
+AT_CHECK([ovn-sbctl get Service_Monitor ${hc_uuid} options:az-name],
+[0], [az_name
+])
+
+check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:\"[[2001::3]]\"=\"lport1:[[2001::2]]:\"
+check_row_count sb:Service_Monitor 0
+OVS_WAIT_UNTIL([grep "Empty AZ name specified" northd/ovn-northd.log])
+
+check ovn-nbctl lb-del lb1
+
+# Check correct setup of distributed load balancers.
+check ovn-nbctl lb-add lb_distubuted [[2001::a]]:80 [[2001::3]]:80,[[2002::3]]:80
+check ovn-nbctl lr-lb-add lr1 lb_distubuted
+check ovn-nbctl --wait=sb set load_balancer lb_distubuted options:distributed=true
+
+# Check that load balancer does not work in a distributed mode - there is no ip_port_mappings setting
+ovn-sbctl lflow-list lr1 > lr1_lflow
+AT_CHECK([cat lr1_lflow | grep lr_in_dnat | grep priority=120 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && ip6.dst == 2001::a && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(drop;)
+])
+
+check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:\"[[2001::3]]\"=\"lport1\"
+ovn-sbctl lflow-list lr1 > lr1_lflow
+AT_CHECK([cat lr1_lflow | grep lr_in_dnat | grep priority=120 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && ip6.dst == 2001::a && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(ct_lb_mark_local(backends="lport1":[[2001::3]]:80);)
+])
+
+check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:\"[[2002::3]]\"=\"lport2\"
+ovn-sbctl lflow-list lr1 > lr1_lflow
+AT_CHECK([cat lr1_lflow | grep lr_in_dnat | grep priority=120 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && ip6.dst == 2001::a && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(ct_lb_mark_local(backends="lport1":[[2001::3]]:80,"lport2":[[2002::3]]:80);)
+])
+
+AT_CHECK([ovn-nbctl --wait=sb --id=@hc create Load_Balancer_Health_Check vip="\[\[2001\:\:a\]\]\:80" \
+             options:failure_count=100 \
+          -- add Load_Balancer . health_check @hc | uuidfilt], [0], [<0>
+])
+
+ovn-sbctl lflow-list lr1 > lr1_lflow
+AT_CHECK([cat lr1_lflow | grep lr_in_dnat | grep priority=120 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && ip6.dst == 2001::a && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(drop;)
+])
+
+check ovn-nbctl --wait=sb set load_balancer . ip_port_mappings:\"[[2001::3]]\"=\"lport1:[[2001::2]]\"
+ovn-sbctl lflow-list lr1 > lr1_lflow
+AT_CHECK([cat lr1_lflow | grep lr_in_dnat | grep priority=120 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && ip6.dst == 2001::a && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(ct_lb_mark_local(backends="lport1":[[2001::3]]:80);)
+])
+
+check ovn-nbctl lb-del lb_distubuted
+
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
 ])
@@ -19319,6 +19462,197 @@ AT_CAPTURE_FILE([lr0flows])
 
 AT_CHECK([grep "lr_in_policy[[^_]]" lr0flows | ovn_strip_lflows | sort], [0], [dnl
   table=??(lr_in_policy       ), priority=0    , match=(1), action=(reg8[[0..15]] = 0; next;)
+])
+
+OVN_CLEANUP_NORTHD
+AT_CLEANUP
+])
+
+OVN_FOR_EACH_NORTHD_NO_HV([
+AT_SETUP([Distributed load balancers: logical-flow test - IPv4/IPv6])
+ovn_start
+
+check ovn-nbctl ls-add outside
+check ovn-nbctl lsp-add-localnet-port outside outside phnet
+check ovn-nbctl lsp-add-router-port outside outside-down lr1-up
+
+check ovn-nbctl lr-add lr1 \
+      -- lrp-add lr1 lr1-up 11:11:11:11:11:11 169.254.0.1/24 2001:db8:abcd:0002::bad/64 \
+      -- lrp-add lr1 lr1-down 12:12:12:12:12:12 192.168.0.1/24 2001:db8:abcd:0001::c0fe/64
+
+check ovn-nbctl ls-add ls1 \
+      -- lsp-add ls1 lport1 \
+      -- lsp-set-addresses lport1 "13:13:13:13:13:13 192.168.0.101" \
+      -- lsp-add ls1 lport2 \
+      -- lsp-set-addresses lport2 "14:14:14:14:14:14 192.168.0.102"
+check ovn-nbctl lsp-add-router-port ls1 ls1-up lr1-down
+
+check ovn-nbctl ha-chassis-group-add gateway
+check ovn-nbctl ha-chassis-group-add-chassis gateway hv1 1
+ha_g_uuid=$(fetch_column nb:HA_Chassis_Group _uuid name=gateway)
+lr1_up_uuid=$(fetch_column nb:Logical_Router_Port _uuid name=lr1-up)
+check ovn-nbctl set logical_router_port $lr1_up_uuid ha_chassis_group=$ha_g_uuid
+
+check ovn-nbctl lb-add lb1_ipv4 172.31.0.1:80 192.168.0.101:10880,192.168.0.102:10880
+check ovn-nbctl set Load_Balancer lb1_ipv4 ip_port_mappings:192.168.0.101=lport1:192.168.0.199
+check ovn-nbctl set Load_Balancer lb1_ipv4 ip_port_mappings:192.168.0.102=lport2:192.168.0.199
+check ovn-nbctl lr-lb-add lr1 lb1_ipv4
+
+check ovn-nbctl lb-add lb1_ipv6 [[2000::1]]:80  [[2001:db8:abcd:1::2]]:10882
+check ovn-nbctl set Load_Balancer lb1_ipv6 ip_port_mappings:\"[[2001:db8:abcd:1::2]]\"=\"lport1\"
+check ovn-nbctl lr-lb-add lr1 lb1_ipv6
+
+ovn-sbctl lflow-list lr1 > lr1_lflows_before
+ovn-sbctl lflow-list outside > outside_lflows_before
+
+AT_CHECK([cat outside_lflows_before | grep ls_in_l2_lkup | grep priority=50 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 11:11:11:11:11:11 && is_chassis_resident("cr-lr1-up")), action=(outport = "outside-down"; output;)
+])
+
+AT_CHECK([cat lr1_lflows_before | grep lr_in_ip_input | grep priority=90 | grep 169.254.0.1 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_input     ), priority=90   , match=(inport == "lr1-up" && arp.op == 1 && arp.tpa == 169.254.0.1 && arp.spa == 169.254.0.0/24 && is_chassis_resident("cr-lr1-up")), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(ip4.dst == 169.254.0.1 && icmp4.type == 8 && icmp4.code == 0), action=(ip4.dst <-> ip4.src; ip.ttl = 255; icmp4.type = 0; flags.loopback = 1; next; )
+])
+
+AT_CHECK([cat lr1_lflows_before | grep lr_in_ip_input | grep priority=90 | grep 2001:db8:abcd:2::bad | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_input     ), priority=90   , match=(inport == "lr1-up" && ip6.dst == {2001:db8:abcd:2::bad, ff02::1:ff00:bad} && nd_ns && nd.target == 2001:db8:abcd:2::bad && is_chassis_resident("cr-lr1-up")), action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+  table=??(lr_in_ip_input     ), priority=90   , match=(ip6.dst == {2001:db8:abcd:2::bad, fe80::1311:11ff:fe11:1111} && icmp6.type == 128 && icmp6.code == 0), action=(ip6.dst <-> ip6.src; ip.ttl = 255; icmp6.type = 129; flags.loopback = 1; next; )
+])
+
+AT_CHECK([cat lr1_lflows_before | grep lr_in_admission | grep  priority=50 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 11:11:11:11:11:11 && inport == "lr1-up" && is_chassis_resident("cr-lr1-up")), action=(xreg0[[0..47]] = 11:11:11:11:11:11; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 12:12:12:12:12:12 && inport == "lr1-down"), action=(xreg0[[0..47]] = 12:12:12:12:12:12; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr1-down"), action=(xreg0[[0..47]] = 12:12:12:12:12:12; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr1-up"), action=(xreg0[[0..47]] = 11:11:11:11:11:11; next;)
+])
+
+AT_CHECK([cat lr1_lflows_before | grep lr_out_undnat | grep priority=120 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_undnat      ), priority=120  , match=(ip4 && ((ip4.src == 192.168.0.101 && tcp.src == 10880) || (ip4.src == 192.168.0.102 && tcp.src == 10880)) && (inport == "lr1-up" || outport == "lr1-up") && is_chassis_resident("cr-lr1-up")), action=(ct_dnat;)
+  table=??(lr_out_undnat      ), priority=120  , match=(ip6 && ((ip6.src == 2001:db8:abcd:1::2 && tcp.src == 10882)) && (inport == "lr1-up" || outport == "lr1-up") && is_chassis_resident("cr-lr1-up")), action=(ct_dnat;)
+])
+
+AT_CHECK([cat lr1_lflows_before | grep lr_in_gw_redirect | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_gw_redirect  ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_gw_redirect  ), priority=200  , match=(ip4 && ((ip4.src == 192.168.0.101 && tcp.src == 10880) || (ip4.src == 192.168.0.102 && tcp.src == 10880)) && outport == "lr1-up"), action=(outport = "cr-lr1-up"; next;)
+  table=??(lr_in_gw_redirect  ), priority=200  , match=(ip6 && ((ip6.src == 2001:db8:abcd:1::2 && tcp.src == 10882)) && outport == "lr1-up"), action=(outport = "cr-lr1-up"; next;)
+  table=??(lr_in_gw_redirect  ), priority=50   , match=(outport == "lr1-up"), action=(outport = "cr-lr1-up"; next;)
+])
+
+AT_CHECK([cat lr1_lflows_before | grep lr_in_dnat | grep priority=120 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.31.0.1 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80 && is_chassis_resident("cr-lr1-up")), action=(ct_lb_mark(backends=192.168.0.101:10880,192.168.0.102:10880);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && ip6.dst == 2000::1 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80 && is_chassis_resident("cr-lr1-up")), action=(ct_lb_mark(backends=[[2001:db8:abcd:1::2]]:10882);)
+])
+
+AT_CHECK([cat outside_lflows_before | grep ls_in_check_port_sec | grep priority=75 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_check_port_sec), priority=75   , match=(arp.op == 1 && inport == "outside"), action=(reg0[[22]] = 1; next;)
+])
+
+AT_CHECK([cat outside_lflows_before | grep ls_in_apply_port_sec | grep priority=75 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_apply_port_sec), priority=75   , match=(reg0[[22]] == 1 && is_chassis_resident("cr-lr1-up")), action=(next;)
+])
+
+check ovn-nbctl clear logical_router_port $lr1_up_uuid ha_chassis_group
+check ovn-nbctl ha-chassis-group-del gateway
+check ovn-nbctl ha-chassis-group-add gateway2
+check ovn-nbctl ha-chassis-group-add-chassis gateway2 test 1
+ha_g_uuid=$(fetch_column nb:HA_Chassis_Group _uuid name=gateway2)
+lr1_up_uuid=$(fetch_column nb:Logical_Router_Port _uuid name=lr1-up)
+check ovn-nbctl set logical_router_port $lr1_up_uuid ha_chassis_group=$ha_g_uuid
+
+check ovn-nbctl set load_balancer lb1_ipv4 options:distributed=true
+
+ovn-sbctl lflow-list outside > outside_lflows_after
+ovn-sbctl lflow-list lr1 > lr1_lflows_after
+
+AT_CHECK([cat outside_lflows_after | grep ls_in_l2_lkup | grep priority=50 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 11:11:11:11:11:11), action=(outport = "outside-down"; output;)
+])
+
+AT_CHECK([cat lr1_lflows_after | grep lr_in_ip_input | grep priority=90 | grep 169.254.0.1 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_input     ), priority=90   , match=(inport == "lr1-up" && arp.op == 1 && arp.tpa == 169.254.0.1 && arp.spa == 169.254.0.0/24), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(ip4.dst == 169.254.0.1 && icmp4.type == 8 && icmp4.code == 0), action=(ip4.dst <-> ip4.src; ip.ttl = 255; icmp4.type = 0; flags.loopback = 1; next; )
+])
+
+AT_CHECK([cat lr1_lflows_after | grep lr_in_ip_input | grep priority=90 | grep 2001:db8:abcd:2::bad | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_input     ), priority=90   , match=(inport == "lr1-up" && ip6.dst == {2001:db8:abcd:2::bad, ff02::1:ff00:bad} && nd_ns && nd.target == 2001:db8:abcd:2::bad), action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+  table=??(lr_in_ip_input     ), priority=90   , match=(ip6.dst == {2001:db8:abcd:2::bad, fe80::1311:11ff:fe11:1111} && icmp6.type == 128 && icmp6.code == 0), action=(ip6.dst <-> ip6.src; ip.ttl = 255; icmp6.type = 129; flags.loopback = 1; next; )
+])
+
+AT_CHECK([cat lr1_lflows_after | grep lr_in_admission | grep priority=50 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 11:11:11:11:11:11 && inport == "lr1-up"), action=(xreg0[[0..47]] = 11:11:11:11:11:11; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 12:12:12:12:12:12 && inport == "lr1-down"), action=(xreg0[[0..47]] = 12:12:12:12:12:12; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr1-down"), action=(xreg0[[0..47]] = 12:12:12:12:12:12; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr1-up"), action=(xreg0[[0..47]] = 11:11:11:11:11:11; next;)
+])
+
+AT_CHECK([cat lr1_lflows_after | grep lr_out_undnat | grep priority=120 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_undnat      ), priority=120  , match=(ip4 && ((ip4.src == 192.168.0.101 && tcp.src == 10880) || (ip4.src == 192.168.0.102 && tcp.src == 10880)) && (inport == "lr1-up" || outport == "lr1-up")), action=(ct_dnat;)
+  table=??(lr_out_undnat      ), priority=120  , match=(ip6 && ((ip6.src == 2001:db8:abcd:1::2 && tcp.src == 10882)) && (inport == "lr1-up" || outport == "lr1-up") && is_chassis_resident("cr-lr1-up")), action=(ct_dnat;)
+])
+
+AT_CHECK([cat lr1_lflows_after | grep lr_in_gw_redirect | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_gw_redirect  ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_gw_redirect  ), priority=200  , match=(ip4 && ((ip4.src == 192.168.0.101 && tcp.src == 10880) || (ip4.src == 192.168.0.102 && tcp.src == 10880)) && outport == "lr1-up"), action=(outport = "lr1-up"; next;)
+  table=??(lr_in_gw_redirect  ), priority=200  , match=(ip6 && ((ip6.src == 2001:db8:abcd:1::2 && tcp.src == 10882)) && outport == "lr1-up"), action=(outport = "cr-lr1-up"; next;)
+  table=??(lr_in_gw_redirect  ), priority=50   , match=(outport == "lr1-up"), action=(outport = "cr-lr1-up"; next;)
+])
+
+AT_CHECK([cat lr1_lflows_after | grep lr_in_dnat | grep priority=120 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.31.0.1 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(ct_lb_mark_local(backends="lport1":192.168.0.101:10880,"lport2":192.168.0.102:10880);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && ip6.dst == 2000::1 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80 && is_chassis_resident("cr-lr1-up")), action=(ct_lb_mark(backends=[[2001:db8:abcd:1::2]]:10882);)
+])
+
+AT_CHECK([cat outside_lflows_after | grep ls_in_check_port_sec | grep priority=75 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_check_port_sec), priority=75   , match=(arp.op == 1 && inport == "outside"), action=(reg0[[22]] = 1; next;)
+])
+
+AT_CHECK([cat outside_lflows_after | grep ls_in_apply_port_sec | grep priority=75 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_apply_port_sec), priority=75   , match=(reg0[[22]] == 1), action=(next;)
+])
+
+check ovn-nbctl set load_balancer lb1_ipv6 options:distributed=true
+
+ovn-sbctl lflow-list outside > outside_lflows_after
+ovn-sbctl lflow-list lr1 > lr1_lflows_after
+
+AT_CHECK([cat lr1_lflows_after | grep lr_out_undnat | grep priority=120 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_out_undnat      ), priority=120  , match=(ip4 && ((ip4.src == 192.168.0.101 && tcp.src == 10880) || (ip4.src == 192.168.0.102 && tcp.src == 10880)) && (inport == "lr1-up" || outport == "lr1-up")), action=(ct_dnat;)
+  table=??(lr_out_undnat      ), priority=120  , match=(ip6 && ((ip6.src == 2001:db8:abcd:1::2 && tcp.src == 10882)) && (inport == "lr1-up" || outport == "lr1-up")), action=(ct_dnat;)
+])
+
+AT_CHECK([cat lr1_lflows_after | grep lr_in_gw_redirect | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_gw_redirect  ), priority=0    , match=(1), action=(next;)
+  table=??(lr_in_gw_redirect  ), priority=200  , match=(ip4 && ((ip4.src == 192.168.0.101 && tcp.src == 10880) || (ip4.src == 192.168.0.102 && tcp.src == 10880)) && outport == "lr1-up"), action=(outport = "lr1-up"; next;)
+  table=??(lr_in_gw_redirect  ), priority=200  , match=(ip6 && ((ip6.src == 2001:db8:abcd:1::2 && tcp.src == 10882)) && outport == "lr1-up"), action=(outport = "lr1-up"; next;)
+  table=??(lr_in_gw_redirect  ), priority=50   , match=(outport == "lr1-up"), action=(outport = "cr-lr1-up"; next;)
+])
+
+AT_CHECK([cat lr1_lflows_after | grep lr_in_dnat | grep priority=120 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip4 && ip4.dst == 172.31.0.1 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(ct_lb_mark_local(backends="lport1":192.168.0.101:10880,"lport2":192.168.0.102:10880);)
+  table=??(lr_in_dnat         ), priority=120  , match=(ct.new && !ct.rel && ip6 && ip6.dst == 2000::1 && reg1[[16..23]] == 6 && reg1[[0..15]] == 80), action=(ct_lb_mark_local(backends="lport1":[[2001:db8:abcd:1::2]]:10882);)
+])
+
+check ovn-nbctl set load_balancer lb1_ipv6 options:distributed=false
+
+AT_CHECK([cat outside_lflows_after | grep ls_in_l2_lkup | grep priority=50 | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_l2_lkup      ), priority=50   , match=(eth.dst == 11:11:11:11:11:11), action=(outport = "outside-down"; output;)
+])
+
+AT_CHECK([cat lr1_lflows_after | grep lr_in_ip_input | grep priority=90 | grep 169.254.0.1 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_input     ), priority=90   , match=(inport == "lr1-up" && arp.op == 1 && arp.tpa == 169.254.0.1 && arp.spa == 169.254.0.0/24), action=(eth.dst = eth.src; eth.src = xreg0[[0..47]]; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = xreg0[[0..47]]; arp.tpa <-> arp.spa; outport = inport; flags.loopback = 1; output;)
+  table=??(lr_in_ip_input     ), priority=90   , match=(ip4.dst == 169.254.0.1 && icmp4.type == 8 && icmp4.code == 0), action=(ip4.dst <-> ip4.src; ip.ttl = 255; icmp4.type = 0; flags.loopback = 1; next; )
+])
+
+AT_CHECK([cat lr1_lflows_after | grep lr_in_ip_input | grep priority=90 | grep 2001:db8:abcd:2::bad | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_ip_input     ), priority=90   , match=(inport == "lr1-up" && ip6.dst == {2001:db8:abcd:2::bad, ff02::1:ff00:bad} && nd_ns && nd.target == 2001:db8:abcd:2::bad), action=(nd_na_router { eth.src = xreg0[[0..47]]; ip6.src = nd.target; nd.tll = xreg0[[0..47]]; outport = inport; flags.loopback = 1; output; };)
+  table=??(lr_in_ip_input     ), priority=90   , match=(ip6.dst == {2001:db8:abcd:2::bad, fe80::1311:11ff:fe11:1111} && icmp6.type == 128 && icmp6.code == 0), action=(ip6.dst <-> ip6.src; ip.ttl = 255; icmp6.type = 129; flags.loopback = 1; next; )
+])
+
+AT_CHECK([cat lr1_lflows_after | grep lr_in_admission | grep priority=50 | ovn_strip_lflows], [0], [dnl
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 11:11:11:11:11:11 && inport == "lr1-up"), action=(xreg0[[0..47]] = 11:11:11:11:11:11; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.dst == 12:12:12:12:12:12 && inport == "lr1-down"), action=(xreg0[[0..47]] = 12:12:12:12:12:12; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr1-down"), action=(xreg0[[0..47]] = 12:12:12:12:12:12; next;)
+  table=??(lr_in_admission    ), priority=50   , match=(eth.mcast && inport == "lr1-up"), action=(xreg0[[0..47]] = 11:11:11:11:11:11; next;)
 ])
 
 OVN_CLEANUP_NORTHD

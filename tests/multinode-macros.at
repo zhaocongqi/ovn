@@ -470,4 +470,19 @@ m_is_fedora() {
     m_central_as grep -qi fedora /etc/os-release
 }
 
+# M_START_L4_SERVER([fake_node], [namespace], [ip_addr], [port], [reply_string], [pidfile])
+#
+# Helper to properly start l4 server in inside 'fake_node''s namespace'.
+m4_define([M_START_L4_SERVER],
+    [podman cp $srcdir/server.py $1:/data/metadata_server.py || exit 1
+     M_NS_DAEMONIZE([$1], [$2],
+                    [$PYTHON /data/metadata_server.py --bind-host $3 \
+                                                       --bind-port $4 \
+                                                       --reply-string $5],
+                     [$6])
+     pid=$(podman exec $1 ip netns exec $2 ps aux | grep metadata_server.py | grep $5 | tr -s ' ' | cut -d' ' -f2)
+     on_exit "podman exec $1 ip netns exec $2 kill $pid"
+    ]
+)
+
 OVS_END_SHELL_HELPERS

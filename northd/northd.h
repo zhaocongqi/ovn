@@ -451,6 +451,11 @@ struct ovn_datapath {
     /* Indicates that the LS has valid vni associated with it. */
     bool has_evpn_vni;
 
+    /* True if datapath has some distributed dependencies.
+     * Currently, this only applies to load balancers attached to datapath
+     * with distributed mode enabled. */
+    bool is_distributed;
+
     /* OVN northd only needs to know about logical router gateway ports for
      * NAT/LB on a distributed router.  The "distributed gateway ports" are
      * populated only when there is a gateway chassis or ha chassis group
@@ -1150,6 +1155,18 @@ ovn_port_must_learn_route(const struct ovn_port *op,
         return false;
     }
     return true;
+}
+
+ /* Returns true if datapath 'od' operates in centralized mode on gateway.
+ *
+ * Returns false when datapath is distributed. A datapath is distributed
+ * only when configured with the 'distributed' option enabled. In distributed
+ * mode, ARP/ND processing is handled locally on each node.
+ */
+static inline bool
+od_is_centralized(const struct ovn_datapath *od)
+{
+    return !od->is_distributed;
 }
 
 struct ovn_port *ovn_port_find(const struct hmap *ports, const char *name);

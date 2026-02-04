@@ -184,6 +184,13 @@ OVN To-do List
     OVN_ENABLE_INTERCONNECT=true and potentially more of the CI lanes
     ovn-kubernetes/ovn-kubernetes defines in its GitHub project.
 
+* Distributed Load Balancers
+
+  * Currently, this feature works when in OVN topology physical network is
+    connected via a switch directly connected to the DGR.
+    We need to make it work for a topology with two levels of routers:
+    first the GW router, then the DGR.
+
 ==============
 OVN Deprecation plan
 ==============

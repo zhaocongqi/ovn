@@ -2130,6 +2130,17 @@
           </p>
         </dd>
 
+        <dt><code>ct_lb_mark_local;</code></dt>
+        <dt><code>ct_lb_mark_local(backends=<var>lport_name</var>[<var>ip</var>[:<var>port</var>][,...][; hash_fields=<var>field1</var>,<var>field2</var>,...][; ct_flag]);</code></dt>
+        <dd>
+          <p>
+              Same as <code>ct_lb_mark</code>, with the key difference that it
+              implements local-only load balancing. This mode selects backends
+              only from those running on the current chassis, preventing
+              traffic from being forwarded to backends on remote nodes.
+          </p>
+        </dd>
+
         <dt>
           <code><var>R</var> = dns_lookup();</code>
         </dt>

@@ -4770,3 +4770,147 @@ M_NS_CHECK_EXEC([ovn-chassis-2], [ovn-ext2], [ping6 -q -c 3 -i 0.3 -w 2 6812:86:
 m_wait_row_count mac_binding 1 ip="6812\:86\:\:102" logical_port="lr1-pub"
 
 AT_CLEANUP
+
+AT_SETUP([Distribute load balancing: IPv4])
+#
+# ┌──────────────────────┐
+# │ fabric (leaf switch) │
+# │       gw-1           │
+# └─────────┬────────────┘
+#           │
+#    ┌──────┴──────┐
+#    │             │
+#    ▼             ▼
+#  route          route
+#  weight 1      weight 2 (2 backends)
+#    │             │
+#    ▼             ▼
+# ┌───────┐      ┌───────┐
+# │Chassis│      │Chassis│
+# │   1   │      │   2   │
+# └───-───┘      └───-───┘
+#
+
+check_fake_multinode_setup
+cleanup_multinode_resources
+
+OVS_WAIT_UNTIL([m_as ovn-chassis-1 ip link show | grep -q genev_sys])
+OVS_WAIT_UNTIL([m_as ovn-chassis-2 ip link show | grep -q genev_sys])
+
+check multinode_nbctl ls-add pub                \
+    -- lsp-add-router-port pub pub-lr1 lr1-pub  \
+    -- lsp-add-localnet-port pub pub-ln public
+
+check multinode_nbctl lr-add lr1 \
+    -- lrp-add lr1 lr1-pub 00:00:00:00:00:01 169.254.1.254/24 \
+    -- lrp-add lr1 lr1-down 00:00:00:00:00:02 192.168.1.254/24
+
+check multinode_nbctl ls-add ls1
+check multinode_nbctl lsp-add ls1 ls1p1
+check multinode_nbctl lsp-set-addresses ls1p1 "00:00:00:01:01:02 192.168.1.1"
+check multinode_nbctl lsp-add ls1 ls1p2
+check multinode_nbctl lsp-set-addresses ls1p2 "00:00:00:01:02:02 192.168.1.2"
+check multinode_nbctl lsp-add ls1 ls1p3
+check multinode_nbctl lsp-set-addresses ls1p3 "00:00:00:01:03:02 192.168.1.3"
+check multinode_nbctl lsp-add-router-port ls1 ls1-lr1 lr1-down
+
+check multinode_nbctl lrp-set-gateway-chassis lr1-pub ovn-chassis-2
+
+# Create default route
+check multinode_nbctl lr-route-add lr1 0.0.0.0/0 169.254.1.253 lr1-pub
+
+m_as ovn-chassis-1 /data/create_fake_vm.sh ls1p1 ls1p1 00:00:00:01:01:02 1500 192.168.1.1 24 192.168.1.254 2001::1/64 2001::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh ls1p2 ls1p2 00:00:00:01:02:02 1500 192.168.1.2 24 192.168.1.254 2001::2/64 2001::a
+m_as ovn-chassis-2 /data/create_fake_vm.sh ls1p3 ls1p3 00:00:00:01:03:02 1500 192.168.1.3 24 192.168.1.254 2001::3/64 2001::a
+m_wait_for_ports_up
+
+# Create load balancer
+lb_vip="172.31.0.1"
+check multinode_nbctl lb-add lb1 $lb_vip:80 192.168.1.1:10880,192.168.1.2:10880,192.168.1.3:10880
+check multinode_nbctl lr-lb-add lr1 lb1
+check multinode_nbctl set Load_Balancer lb1 ip_port_mappings:192.168.1.1=ls1p1:192.168.1.199
+check multinode_nbctl set Load_Balancer lb1 ip_port_mappings:192.168.1.2=ls1p2:192.168.1.199
+check multinode_nbctl set Load_Balancer lb1 ip_port_mappings:192.168.1.3=ls1p3:192.168.1.199
+check multinode_nbctl set load_balancer lb1 options:distributed=true
+
+ip_ch1=$(m_as ovn-chassis-1 ip a show dev eth1 | grep "inet " | awk '{print $2}'| cut -d '/' -f1)
+ip_ch2=$(m_as ovn-chassis-2 ip a show dev eth1 | grep "inet " | awk '{print $2}'| cut -d '/' -f1)
+
+# Add multipath route to load balancer VIP with weighted nexthops on "fabric" host:
+check m_as ovn-gw-1 ip route flush $lb_vip
+check m_as ovn-gw-1 ip route add $lb_vip  nexthop via $ip_ch1 dev eth1 weight 1 \
+                                          nexthop via $ip_ch2 dev eth1 weight 2
+
+# Set kernel multipath hash policy to L3/L4 (source/destination IP+port)
+# Policy 1 = Layer 3/4 hash (src/dst IP+port)
+AT_CHECK([m_as ovn-gw-1 sysctl -w net.ipv4.fib_multipath_hash_policy=1], [0], [dnl
+net.ipv4.fib_multipath_hash_policy = 1
+])
+
+# Check OpenFlow group filling: it should only contain local backends
+AT_CHECK([m_as ovn-chassis-1 ovs-ofctl dump-groups br-int | sed -e 's/table=[[0-9]]*/table=<cleared>/g'], [0], [dnl
+NXST_GROUP_DESC reply (xid=0x2):
+ group_id=1,type=select,selection_method=dp_hash,bucket=bucket_id:0,weight:100,actions=ct(commit,table=<cleared>,zone=NXM_NX_REG11[[0..15]],nat(dst=192.168.1.1:10880),exec(load:0x1->NXM_NX_CT_MARK[[1]]))
+])
+
+AT_CHECK([m_as ovn-chassis-2 ovs-ofctl dump-groups br-int | sed -e 's/table=[[0-9]]*/table=<cleared>/g'], [0], [dnl
+NXST_GROUP_DESC reply (xid=0x2):
+ group_id=2,type=select,selection_method=dp_hash,bucket=bucket_id:1,weight:100,actions=ct(commit,table=<cleared>,zone=NXM_NX_REG11[[0..15]],nat(dst=192.168.1.2:10880),exec(load:0x1->NXM_NX_CT_MARK[[1]])),bucket=bucket_id:2,weight:100,actions=ct(commit,table=<cleared>,zone=NXM_NX_REG11[[0..15]],nat(dst=192.168.1.3:10880),exec(load:0x1->NXM_NX_CT_MARK[[1]]))
+])
+
+physicl_gw_mac_address="30:42:f5:a7:46:65"
+
+# Configure infrastructure on chassis hosts:
+# lb-host (physicl_gw_mac_address) - (veth) lb-ovs - br-lb - br-int
+for c in ovn-chassis-1 ovn-chassis-2
+do
+    check m_as $c ip link add lb-host type veth peer lb-ovs
+    on_exit "m_as $c ip link del lb-host"
+
+    check m_as $c ip link set dev lb-host address $physicl_gw_mac_address
+    check m_as $c ip addr add 169.254.1.253/24 dev lb-host
+    check m_as $c ip link set lb-host up
+    check m_as $c ip link set lb-ovs up
+
+    check m_as $c ovs-vsctl add-br br-lb
+    on_exit "m_as $c ovs-vsctl del-br br-lb"
+    check m_as $c ovs-vsctl add-port br-lb lb-ovs
+    on_exit "m_as $c ovs-vsctl del-port lb-ovs"
+    check m_as $c ovs-vsctl set open . external-ids:ovn-bridge-mappings=public:br-lb
+
+    check m_as $c ip route flush $lb_vip
+    check m_as $c ip r add $lb_vip via 169.254.1.254 dev lb-host
+    on_exit "m_as $c ip route flush $lb_vip"
+done
+
+OVS_WAIT_UNTIL([m_as ovn-chassis-1 ovs-vsctl show | grep -q patch-pub-ln-to-br-int])
+OVS_WAIT_UNTIL([m_as ovn-chassis-2 ovs-vsctl show | grep -q patch-pub-ln-to-br-int])
+
+M_START_L4_SERVER([ovn-chassis-1], [ls1p1], [192.168.1.1], [10880], [ls1p1], [ls1p1.pid])
+M_START_L4_SERVER([ovn-chassis-2], [ls1p2], [192.168.1.2], [10880], [ls1p2], [ls1p2.pid])
+M_START_L4_SERVER([ovn-chassis-2], [ls1p3], [192.168.1.3], [10880], [ls1p3], [ls1p3.pid])
+
+# Capture traffic to verify load balancing occurs locally without east-west traffic
+for i in {1..2}; do
+    node_name="ovn-chassis-$i"
+    M_START_TCPDUMP([$node_name], [-c 2 -neei genev_sys_6081 port 10880], [ch${i}_genev])
+    M_START_TCPDUMP([$node_name], [-c 2 -neei eth2 port 10880], [ch${i}_eth2])
+done
+
+AT_CHECK([m_as ovn-gw-1 /bin/bash -c 'for i in $(seq 500); \
+                        do echo "" | nc 172.31.0.1 80 2>/dev/null ; \
+                        echo ; done | sort | uniq -c' > reply], [0], [])
+
+# Check that requests are distributed among all backends.
+AT_CHECK([grep -q ls1p1 reply && grep -q ls1p2 reply && grep -q ls1p3 reply], [0], [])
+
+AT_CHECK([cat ch1_genev.tcpdump], [0], [dnl
+])
+AT_CHECK([cat ch1_eth2.tcpdump], [0], [dnl
+])
+AT_CHECK([cat ch2_genev.tcpdump], [0], [dnl
+])
+AT_CHECK([cat ch2_eth2.tcpdump], [0], [dnl
+])
+
+AT_CLEANUP

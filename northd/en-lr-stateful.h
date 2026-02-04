@@ -59,6 +59,8 @@ struct lr_stateful_record {
 
     bool has_lb_vip;
 
+    bool has_distributed_lb;
+
     /* Load Balancer vIPs relevant for this datapath. */
     struct ovn_lb_ip_set *lb_ips;
 

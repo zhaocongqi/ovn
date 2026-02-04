@@ -2399,16 +2399,18 @@
         <p>
           Maps from endpoint IP to a colon-separated pair of logical port name
           and source IP,
-          e.g. <code><var>port_name</var>:<var>sourc_ip</var></code> for IPv4.
+          e.g. <code><var>port_name</var>:<var>source_ip</var></code> for IPv4.
           Health checks are sent to this port with the specified source IP.
           For IPv6 square brackets must be used around IP address, e.g:
-          <code><var>port_name</var>:<var>[sourc_ip]</var></code>.  The source
+          <code><var>port_name</var>:<var>[source_ip]</var></code>.  The source
           IP must be from the subnet of the monitored endpoint.  It can be
           either an unused IP from the subnet, or an IP of one of the Logical
           Router Ports connected to the same switch.
           Remote endpoint:
           Specify :target_zone_name at the end of the above syntax to create
           remote health checks in a specific zone.
+          For distributed load balancers - ip_port_mappings is required.
+          In the absence of health checks - source_ip is optional.
         </p>
 
         <p>
@@ -2611,6 +2613,21 @@ or
         traffic may be dropped in scenarios where we have different chassis
         for each DGP. This option is set to <code>false</code> by default.
       </column>
+
+      <column name="options" key="distributed">
+        Option enables distributed load balancing across compute nodes,
+        ensuring traffic is always routed to local backends — eliminating
+        east-west traffic between nodes.
+        Required configuration: <ref column="ip_port_mappings"/>.
+        NOTE: The addressing of the underlay network must not overlap with the
+        addressing of Load Balancer VIP. If the Load Balancer is attached to a
+        router that is directly connected to the underlay network and the VIP
+        belongs to the same subnet as used on the underlay network, the traffic
+        won't be spread across all chassis. Instead, it will be concentrated
+        only on the chassis that hosts the Distributed Gateway Port of the
+        router.
+      </column>
+
     </group>
   </table>
 
