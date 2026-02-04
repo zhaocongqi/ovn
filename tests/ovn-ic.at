@@ -4038,6 +4038,14 @@ check ovn-nbctl lb-del az2_lb1
 check_row_count sb:Service_Monitor 0
 check_row_count ic-sb:Service_Monitor 0
 
+# We expect something around 20 Service_Monitor updates.
+# Make sure there is no fight between ic and northd, which used to cause
+# up to more than 2000 updates.
+for az in az1 az2 az3; do
+    svc_update_count=$(grep -c Service_Monitor $az/ovn-sb/ovn-sb.db)
+    check test $svc_update_count -lt 50
+done
+
 OVN_CLEANUP_IC([az1], [az2], [az3])
 AT_CLEANUP
 ])

@@ -3027,16 +3027,19 @@ sync_service_monitor(struct ic_context *ctx)
             sbrec_service_monitor_set_ic_learned(sb_rec, true);
         }
 
-        /* Always update options since they may change via
-         * NB configuration. Also update chassis_name if
-         * the port has been reassigned to a different chassis.
-         */
-        if (svc_mon->chassis_name) {
-            sbrec_service_monitor_set_chassis_name(sb_rec,
-                svc_mon->chassis_name);
+        /* Only update if ic owns it */
+        if (sb_rec->ic_learned) {
+            /* Always update options since they may change via
+             * NB configuration. Also update chassis_name if
+             * the port has been reassigned to a different chassis.
+             */
+            if (svc_mon->chassis_name) {
+                sbrec_service_monitor_set_chassis_name(sb_rec,
+                    svc_mon->chassis_name);
+            }
+            sbrec_service_monitor_set_options(sb_rec, &db_rec->options);
+            refresh_sb_record_cache(&sync_data.local_sb_svcs_map, sb_rec);
         }
-        sbrec_service_monitor_set_options(sb_rec, &db_rec->options);
-        refresh_sb_record_cache(&sync_data.local_sb_svcs_map, sb_rec);
     }
 
     /* Delete local created records that are no longer used. */
