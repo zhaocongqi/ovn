@@ -7625,11 +7625,13 @@ main(int argc, char *argv[])
                     engine_set_force_recompute();
                 }
 
-                if (chassis && ovs_feature_set_discovered()) {
+                const struct sbrec_sb_global *sbg =
+                    sbrec_sb_global_first(ovnsb_idl_loop.idl);
+                if (chassis && sbg && ovs_feature_set_discovered()) {
                     encaps_run(ovs_idl_txn, ovnsb_idl_txn, br_int,
                                sbrec_chassis_table_get(ovnsb_idl_loop.idl),
                                chassis,
-                               sbrec_sb_global_first(ovnsb_idl_loop.idl),
+                               sbg,
                                ovs_table,
                                &transport_zones,
                                bridge_table);
