@@ -4,6 +4,7 @@ compute_engine_instance:
   architecture: arm64
   platform: linux
   memory: 4G
+  disk: 20
 
 # Run separate task for the image build, so it's running only once outside
 # the test matrix.
