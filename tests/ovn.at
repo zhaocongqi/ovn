@@ -37686,7 +37686,7 @@ check_sample_drops() {
     fi
 
     ovs-vsctl --id=@br get Bridge br-int --  \
-        --id=@i create IPFIX targets=\"192.168.1.1\"  -- \
+        --id=@i create IPFIX targets=\"127.0.0.1\"  -- \
         create Flow_Sample_Collector_Set bridge=@br id=123 ipfix=@i
 
     check ovn-nbctl -- set NB_Global . options:debug_drop_collector_set="123" \
