@@ -33,6 +33,7 @@
 #include "unixctl.h"
 #include "vec.h"
 #include "sset.h"
+#include "lib/stopwatch.h"
 
 VLOG_DEFINE_THIS_MODULE(inc_proc_eng);
 
@@ -195,6 +196,31 @@ engine_set_log_timeout_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
 }
 
 static void
+engine_list_stopwatch_cmd(struct unixctl_conn *conn, int argc OVS_UNUSED,
+                          const char *argv[], void *arg OVS_UNUSED)
+{
+    const char *node_name = argc > 1 ? argv[1] : NULL;
+    struct engine_node *node;
+    struct ds output_str = DS_EMPTY_INITIALIZER;
+    VECTOR_FOR_EACH (&engine_nodes, node) {
+        if (node_name && strcmp(node->name, node_name)) {
+            continue;
+        }
+        ds_put_format(&output_str, "%s\n", node->name);
+        for (size_t i = 0; i < node->n_inputs; i++) {
+            struct engine_node_input *input = &node->inputs[i];
+            if (!input->change_handler) {
+                continue;
+            }
+            ds_put_format(&output_str, "%s\n", input->change_handler_name);
+        }
+    }
+
+    unixctl_command_reply(conn, ds_cstr(&output_str));
+    ds_destroy(&output_str);
+}
+
+static void
 engine_get_compute_failure_info(struct engine_node *node)
 {
     VLOG_DBG("Node \"%s\" is missing compute failure debug info.", node->name);
@@ -217,6 +243,7 @@ engine_init(struct engine_node *node, struct engine_arg *arg)
             sorted_node->get_compute_failure_info =
                 engine_get_compute_failure_info;
         }
+        stopwatch_create(sorted_node->name, SW_MS);
     }
 
     unixctl_command_register("inc-engine/show-stats", "", 0, 2,
@@ -227,6 +254,8 @@ engine_init(struct engine_node *node, struct engine_arg *arg)
                              engine_trigger_recompute_cmd, NULL);
     unixctl_command_register("inc-engine/compute-log-timeout", "", 1, 1,
                              engine_set_log_timeout_cmd, NULL);
+    unixctl_command_register("inc-engine/list-stopwatches", "", 0, 1,
+                             engine_list_stopwatch_cmd, NULL);
 }
 
 void
@@ -276,6 +305,9 @@ engine_add_input_impl(struct engine_node *node, struct engine_node *input,
     node->inputs[node->n_inputs].node = input;
     node->inputs[node->n_inputs].change_handler = change_handler;
     node->inputs[node->n_inputs].change_handler_name = change_handler_name;
+    if (change_handler) {
+        stopwatch_create(change_handler_name, SW_MS);
+    }
     node->n_inputs ++;
 }
 
@@ -417,6 +449,26 @@ engine_init_run(void)
     }
 }
 
+static enum engine_node_state
+run_recompute_callback(struct engine_node *node)
+{
+    enum engine_node_state ret;
+    stopwatch_start(node->name, time_msec());
+    ret = node->run(node, node->data);
+    stopwatch_stop(node->name, time_msec());
+    return ret;
+}
+
+static enum engine_input_handler_result
+run_change_handler(struct engine_node *node, struct engine_node_input *input)
+{
+    enum engine_input_handler_result ret;
+    stopwatch_start(input->change_handler_name, time_msec());
+    ret = input->change_handler(node, node->data);
+    stopwatch_stop(input->change_handler_name, time_msec());
+    return ret;
+}
+
 /* Do a full recompute (or at least try). If we're not allowed then
  * mark the node as "canceled".
  */
@@ -445,7 +497,7 @@ engine_recompute(struct engine_node *node, bool allowed,
 
     /* Run the node handler which might change state. */
     long long int now = time_msec();
-    engine_set_node_state(node, node->run(node, node->data),
+    engine_set_node_state(node, run_recompute_callback(node),
                           "recompute run() result");
     node->stats.recompute++;
     long long int delta_time = time_msec() - now;
@@ -475,7 +527,7 @@ engine_compute(struct engine_node *node, bool recompute_allowed)
              */
             long long int now = time_msec();
             enum engine_input_handler_result handled;
-            handled = node->inputs[i].change_handler(node, node->data);
+            handled = run_change_handler(node, &node->inputs[i]);
             long long int delta_time = time_msec() - now;
             if (delta_time > engine_compute_log_timeout_msec) {
                 static struct vlog_rate_limit rl =
@@ -512,7 +564,7 @@ engine_run_node(struct engine_node *node, bool recompute_allowed)
 {
     if (!node->n_inputs) {
         /* Run the node handler which might change state. */
-        engine_set_node_state(node, node->run(node, node->data),
+        engine_set_node_state(node, run_recompute_callback(node),
                               "run() result due to having no inputs");
         node->stats.recompute++;
         return;
@@ -597,7 +649,7 @@ engine_need_run(void)
             continue;
         }
 
-        engine_set_node_state(node, node->run(node, node->data),
+        engine_set_node_state(node, run_recompute_callback(node),
                               "checking if engine needs to be run");
         node->stats.recompute++;
         VLOG_DBG("input node: %s, state: %s", node->name,
