@@ -27,7 +27,6 @@
 #include "lib/uuidset.h"
 #include "openvswitch/util.h"
 #include "openvswitch/vlog.h"
-#include "stopwatch.h"
 
 /* OVN includes */
 #include "en-lb-data.h"
@@ -39,7 +38,6 @@
 #include "lib/ovn-nb-idl.h"
 #include "lib/ovn-sb-idl.h"
 #include "lib/ovn-util.h"
-#include "lib/stopwatch-names.h"
 #include "lflow-mgr.h"
 #include "northd.h"
 
@@ -124,15 +122,12 @@ en_lr_stateful_run(struct engine_node *node, void *data_)
     struct lr_stateful_input input_data = lr_stateful_get_input_data(node);
     struct ed_type_lr_stateful *data = data_;
 
-    stopwatch_start(LR_STATEFUL_RUN_STOPWATCH_NAME, time_msec());
-
     lr_stateful_table_clear(&data->table);
     lr_stateful_table_build(&data->table, input_data.lr_nats,
                             input_data.lr_datapaths,
                             input_data.lb_datapaths_map,
                             input_data.lbgrp_datapaths_map);
 
-    stopwatch_stop(LR_STATEFUL_RUN_STOPWATCH_NAME, time_msec());
     return EN_UPDATED;
 }
 

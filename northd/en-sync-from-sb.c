@@ -27,9 +27,6 @@
 #include "lib/ovn-nb-idl.h"
 #include "lib/ovn-sb-idl.h"
 #include "lib/ovn-util.h"
-#include "stopwatch.h"
-#include "lib/stopwatch-names.h"
-#include "timeval.h"
 #include "northd.h"
 
 #include "openvswitch/vlog.h"
@@ -53,11 +50,9 @@ en_sync_from_sb_run(struct engine_node *node, void *data OVS_UNUSED)
         EN_OVSDB_GET(engine_get_input("SB_port_binding", node));
     const struct sbrec_ha_chassis_group_table *sb_ha_ch_grp_table =
         EN_OVSDB_GET(engine_get_input("SB_ha_chassis_group", node));
-    stopwatch_start(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
     ovnsb_db_run(eng_ctx->ovnsb_idl_txn,
                  sb_pb_table, sb_ha_ch_grp_table,
                  &nd->ls_ports, &nd->lr_ports);
-    stopwatch_stop(OVNSB_DB_RUN_STOPWATCH_NAME, time_msec());
 
     return EN_UNCHANGED;
 }

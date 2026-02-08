@@ -18,11 +18,9 @@
 #include <stdbool.h>
 
 #include "openvswitch/vlog.h"
-#include "stopwatch.h"
 #include "northd.h"
 
 #include "en-learned-route-sync.h"
-#include "lib/stopwatch-names.h"
 #include "openvswitch/hmap.h"
 #include "ovn-util.h"
 
@@ -131,14 +129,11 @@ en_learned_route_sync_run(struct engine_node *node, void *data)
         EN_OVSDB_GET(engine_get_input("SB_learned_route", node));
     struct northd_data *northd_data = engine_get_input_data("northd", node);
 
-    stopwatch_start(LEARNED_ROUTE_SYNC_RUN_STOPWATCH_NAME, time_msec());
-
     routes_table_sync(sbrec_learned_route_table,
                       &northd_data->lr_ports,
                       &northd_data->lr_datapaths,
                       &routes_sync_data->parsed_routes);
 
-    stopwatch_stop(LEARNED_ROUTE_SYNC_RUN_STOPWATCH_NAME, time_msec());
     return EN_UPDATED;
 }
 

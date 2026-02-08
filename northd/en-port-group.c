@@ -17,10 +17,8 @@
 #include <config.h>
 
 #include "openvswitch/vlog.h"
-#include "stopwatch.h"
 
 #include "en-port-group.h"
-#include "lib/stopwatch-names.h"
 #include "northd.h"
 
 VLOG_DEFINE_THIS_MODULE(en_port_group);
@@ -529,8 +527,6 @@ en_port_group_run(struct engine_node *node, void *data_)
     struct port_group_input input_data = port_group_get_input_data(node);
     struct port_group_data *data = data_;
 
-    stopwatch_start(PORT_GROUP_RUN_STOPWATCH_NAME, time_msec());
-
     ls_port_group_table_clear(&data->ls_port_groups);
     port_group_ls_table_clear(&data->port_groups_lses);
 
@@ -543,7 +539,6 @@ en_port_group_run(struct engine_node *node, void *data_)
                              input_data.sbrec_port_group_table,
                              eng_ctx->ovnsb_idl_txn);
 
-    stopwatch_stop(PORT_GROUP_RUN_STOPWATCH_NAME, time_msec());
     return EN_UPDATED;
 }
 

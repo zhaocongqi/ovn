@@ -19,12 +19,10 @@
 
 #include "northd/lflow-mgr.h"
 #include "openvswitch/vlog.h"
-#include "stopwatch.h"
 #include "northd.h"
 
 #include "en-group-ecmp-route.h"
 #include "en-learned-route-sync.h"
-#include "lib/stopwatch-names.h"
 #include "openvswitch/hmap.h"
 
 VLOG_DEFINE_THIS_MODULE(en_group_ecmp_route);
@@ -375,11 +373,8 @@ en_group_ecmp_route_run(struct engine_node *node, void *_data)
     struct learned_route_sync_data *learned_route_data
         = engine_get_input_data("learned_route_sync", node);
 
-    stopwatch_start(GROUP_ECMP_ROUTE_RUN_STOPWATCH_NAME, time_msec());
-
     group_ecmp_route(data, routes_data, learned_route_data);
 
-    stopwatch_stop(GROUP_ECMP_ROUTE_RUN_STOPWATCH_NAME, time_msec());
     return EN_UPDATED;
 }
 

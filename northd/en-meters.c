@@ -17,10 +17,8 @@
 #include <config.h>
 
 #include "openvswitch/vlog.h"
-#include "stopwatch.h"
 
 #include "en-meters.h"
-#include "lib/stopwatch-names.h"
 
 VLOG_DEFINE_THIS_MODULE(en_meters);
 
@@ -68,14 +66,10 @@ en_sync_meters_run(struct engine_node *node, void *data_)
 
     const struct engine_context *eng_ctx = engine_get_context();
 
-    stopwatch_start(SYNC_METERS_RUN_STOPWATCH_NAME, time_msec());
-
     build_meter_groups(&data->meter_groups, nb_meter_table);
 
     sync_meters(eng_ctx->ovnsb_idl_txn, nb_meter_table, acl_table,
                 sb_meter_table, &data->meter_groups);
-
-    stopwatch_stop(SYNC_METERS_RUN_STOPWATCH_NAME, time_msec());
     return EN_UPDATED;
 }
 

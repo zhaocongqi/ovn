@@ -18,7 +18,6 @@
 #include "include/openvswitch/hmap.h"
 #include "openvswitch/util.h"
 #include "openvswitch/vlog.h"
-#include "stopwatch.h"
 
 /* OVN includes */
 #include "en-lr-nat.h"
@@ -27,7 +26,6 @@
 #include "lib/ovn-nb-idl.h"
 #include "lib/ovn-sb-idl.h"
 #include "lib/ovn-util.h"
-#include "lib/stopwatch-names.h"
 #include "lflow-mgr.h"
 #include "northd.h"
 
@@ -195,8 +193,6 @@ en_ls_arp_run(struct engine_node *node, void *data_)
     struct ls_arp_input input_data = ls_arp_get_input_data(node);
     struct ed_type_ls_arp *data = data_;
 
-    stopwatch_start(LS_ARP_RUN_STOPWATCH_NAME, time_msec());
-
     ls_arp_table_clear(&data->table);
 
     const struct ovn_datapath *od;
@@ -209,8 +205,6 @@ en_ls_arp_run(struct engine_node *node, void *data_)
 
         ls_arp_record_create(&data->table, od, input_data.lr_nats);
     }
-
-    stopwatch_stop(LS_ARP_RUN_STOPWATCH_NAME, time_msec());
 
     return EN_UPDATED;
 }

@@ -990,11 +990,8 @@ main(int argc, char *argv[])
     free(ovn_version);
 
     stopwatch_create(NORTHD_LOOP_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(OVNNB_DB_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(OVNSB_DB_RUN_STOPWATCH_NAME, SW_MS);
     stopwatch_create(BUILD_LFLOWS_CTX_STOPWATCH_NAME, SW_MS);
     stopwatch_create(CLEAR_LFLOWS_CTX_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(BUILD_LFLOWS_STOPWATCH_NAME, SW_MS);
     stopwatch_create(LFLOWS_DATAPATHS_STOPWATCH_NAME, SW_MS);
     stopwatch_create(LFLOWS_PORTS_STOPWATCH_NAME, SW_MS);
     stopwatch_create(LFLOWS_LBS_STOPWATCH_NAME, SW_MS);
@@ -1003,16 +1000,6 @@ main(int argc, char *argv[])
     stopwatch_create(LFLOWS_IGMP_STOPWATCH_NAME, SW_MS);
     stopwatch_create(LFLOWS_DP_GROUPS_STOPWATCH_NAME, SW_MS);
     stopwatch_create(LFLOWS_TO_SB_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(PORT_GROUP_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(SYNC_METERS_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(LR_NAT_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(LR_STATEFUL_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(LS_STATEFUL_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(LS_ARP_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(ADVERTISED_ROUTE_SYNC_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(LEARNED_ROUTE_SYNC_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(DYNAMIC_ROUTES_RUN_STOPWATCH_NAME, SW_MS);
-    stopwatch_create(GROUP_ECMP_ROUTE_RUN_STOPWATCH_NAME, SW_MS);
 
     /* Initialize incremental processing engine for ovn-northd */
     inc_proc_northd_init(&ovnnb_idl_loop, &ovnsb_idl_loop);

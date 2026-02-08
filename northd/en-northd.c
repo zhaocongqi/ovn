@@ -28,8 +28,6 @@
                                * lib/ovn-parallel-hmap.h should be updated
                                * to include this dependency itself */
 #include "lib/ovn-parallel-hmap.h"
-#include "stopwatch.h"
-#include "lib/stopwatch-names.h"
 #include "northd.h"
 #include "lib/util.h"
 #include "openvswitch/vlog.h"
@@ -150,9 +148,7 @@ en_northd_run(struct engine_node *node, void *data)
     northd_get_input_data(node, &input_data);
 
     COVERAGE_INC(northd_run);
-    stopwatch_start(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
     ovnnb_db_run(&input_data, data, eng_ctx->ovnsb_idl_txn);
-    stopwatch_stop(OVNNB_DB_RUN_STOPWATCH_NAME, time_msec());
     return EN_UPDATED;
 }
 

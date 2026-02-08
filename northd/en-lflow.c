@@ -34,8 +34,6 @@
 
 #include "lib/inc-proc-eng.h"
 #include "northd.h"
-#include "stopwatch.h"
-#include "lib/stopwatch-names.h"
 #include "timeval.h"
 #include "openvswitch/vlog.h"
 
@@ -129,8 +127,6 @@ en_lflow_run(struct engine_node *node, void *data)
     struct lflow_input lflow_input;
     lflow_get_input_data(node, &lflow_input);
 
-    stopwatch_start(BUILD_LFLOWS_STOPWATCH_NAME, time_msec());
-
     struct lflow_data *lflow_data = data;
     lflow_table_clear(lflow_data->lflow_table,
         search_mode == LFLOW_TABLE_SEARCH_FIELDS);
@@ -139,7 +135,6 @@ en_lflow_run(struct engine_node *node, void *data)
 
     build_lflows(eng_ctx->ovnsb_idl_txn, &lflow_input,
                  lflow_data->lflow_table);
-    stopwatch_stop(BUILD_LFLOWS_STOPWATCH_NAME, time_msec());
 
     return EN_UPDATED;
 }

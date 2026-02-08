@@ -16,11 +16,8 @@
 #define STOPWATCH_NAMES_H 1
 
 #define NORTHD_LOOP_STOPWATCH_NAME "ovn-northd-loop"
-#define OVNNB_DB_RUN_STOPWATCH_NAME "ovnnb_db_run"
-#define OVNSB_DB_RUN_STOPWATCH_NAME "ovnsb_db_run"
 #define BUILD_LFLOWS_CTX_STOPWATCH_NAME "build_flows_ctx"
 #define CLEAR_LFLOWS_CTX_STOPWATCH_NAME "clear_lflows_ctx"
-#define BUILD_LFLOWS_STOPWATCH_NAME "build_lflows"
 #define LFLOWS_DATAPATHS_STOPWATCH_NAME "lflows_datapaths"
 #define LFLOWS_PORTS_STOPWATCH_NAME "lflows_ports"
 #define LFLOWS_LBS_STOPWATCH_NAME "lflows_lbs"
@@ -29,15 +26,5 @@
 #define LFLOWS_IGMP_STOPWATCH_NAME "lflows_igmp"
 #define LFLOWS_DP_GROUPS_STOPWATCH_NAME "lflows_dp_groups"
 #define LFLOWS_TO_SB_STOPWATCH_NAME "lflows_to_sb"
-#define PORT_GROUP_RUN_STOPWATCH_NAME "port_group_run"
-#define SYNC_METERS_RUN_STOPWATCH_NAME "sync_meters_run"
-#define LR_NAT_RUN_STOPWATCH_NAME "lr_nat_run"
-#define LR_STATEFUL_RUN_STOPWATCH_NAME "lr_stateful"
-#define LS_STATEFUL_RUN_STOPWATCH_NAME "ls_stateful"
-#define LS_ARP_RUN_STOPWATCH_NAME "ls_arp"
-#define ADVERTISED_ROUTE_SYNC_RUN_STOPWATCH_NAME "advertised_route_sync"
-#define LEARNED_ROUTE_SYNC_RUN_STOPWATCH_NAME "learned_route_sync"
-#define DYNAMIC_ROUTES_RUN_STOPWATCH_NAME "dynamic_routes"
-#define GROUP_ECMP_ROUTE_RUN_STOPWATCH_NAME "group_ecmp_route"
 
 #endif

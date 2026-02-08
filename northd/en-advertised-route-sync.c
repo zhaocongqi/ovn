@@ -16,14 +16,12 @@
 
 #include <config.h>
 
-#include "stopwatch.h"
 #include "northd.h"
 
 #include "en-advertised-route-sync.h"
 #include "en-lr-nat.h"
 #include "en-lr-stateful.h"
 #include "lb.h"
-#include "lib/stopwatch-names.h"
 #include "openvswitch/hmap.h"
 #include "ovn-util.h"
 
@@ -247,15 +245,11 @@ en_advertised_route_sync_run(struct engine_node *node, void *data OVS_UNUSED)
     const struct sbrec_advertised_route_table *sbrec_advertised_route_table =
         EN_OVSDB_GET(engine_get_input("SB_advertised_route", node));
 
-    stopwatch_start(ADVERTISED_ROUTE_SYNC_RUN_STOPWATCH_NAME, time_msec());
-
     advertised_route_table_sync(eng_ctx->ovnsb_idl_txn,
                                 sbrec_advertised_route_table,
                                 &routes_data->parsed_routes,
                                 &dynamic_routes_data->routes,
                                 &northd_data->ls_ports, routes_sync_data);
-
-    stopwatch_stop(ADVERTISED_ROUTE_SYNC_RUN_STOPWATCH_NAME, time_msec());
     return EN_UPDATED;
 }
 
@@ -515,7 +509,6 @@ en_dynamic_routes_run(struct engine_node *node, void *data)
 
     en_dynamic_routes_clear(data);
 
-    stopwatch_start(DYNAMIC_ROUTES_RUN_STOPWATCH_NAME, time_msec());
     const struct lr_stateful_record *lr_stateful_rec;
     HMAP_FOR_EACH (lr_stateful_rec, key_node,
                    &lr_stateful_data->table.entries) {
@@ -537,7 +530,6 @@ en_dynamic_routes_run(struct engine_node *node, void *data)
         build_lb_connected_routes(od, &lr_stateful_data->table,
                                   &dynamic_routes_data->routes);
     }
-    stopwatch_stop(DYNAMIC_ROUTES_RUN_STOPWATCH_NAME, time_msec());
     return EN_UPDATED;
 }
 

@@ -24,7 +24,6 @@
 #include "include/openvswitch/hmap.h"
 #include "openvswitch/util.h"
 #include "openvswitch/vlog.h"
-#include "stopwatch.h"
 
 /* OVN includes */
 #include "en-lr-nat.h"
@@ -33,7 +32,6 @@
 #include "lib/ovn-nb-idl.h"
 #include "lib/ovn-sb-idl.h"
 #include "lib/ovn-util.h"
-#include "lib/stopwatch-names.h"
 #include "northd.h"
 
 VLOG_DEFINE_THIS_MODULE(en_lr_nat);
@@ -114,12 +112,10 @@ en_lr_nat_run(struct engine_node *node, void *data_)
     struct northd_data *northd_data = engine_get_input_data("northd", node);
     struct ed_type_lr_nat_data *data = data_;
 
-    stopwatch_start(LR_NAT_RUN_STOPWATCH_NAME, time_msec());
     lr_nat_table_clear(&data->lr_nats);
     lr_nat_table_build(&data->lr_nats, &northd_data->lr_datapaths,
                        &northd_data->lr_ports);
 
-    stopwatch_stop(LR_NAT_RUN_STOPWATCH_NAME, time_msec());
     return EN_UPDATED;
 }
 
