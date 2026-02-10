@@ -1696,7 +1696,7 @@ execute_output(const struct ovntrace_datapath *dp, struct flow *uflow,
     }
 
     struct flow egress_uflow = *uflow;
-    for (int i = 0; i < FLOW_N_REGS; i++) {
+    for (int i = 0; i < OVN_FLOW_N_REGS_SUPPORTED; i++) {
         if (i != MFF_LOG_INPORT - MFF_REG0 &&
             i != MFF_LOG_OUTPORT - MFF_REG0) {
             egress_uflow.regs[i] = 0;

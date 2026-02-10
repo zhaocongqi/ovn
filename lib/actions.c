@@ -1486,10 +1486,8 @@ encode_ct_lb(const struct ovnact_ct_lb *cl,
         ds_put_format(&ds, ",fields(%s)", cl->hash_fields);
     }
 
-    BUILD_ASSERT(MFF_LOG_CT_ZONE >= MFF_REG0);
-    BUILD_ASSERT(MFF_LOG_CT_ZONE < MFF_REG0 + FLOW_N_REGS);
-    BUILD_ASSERT(MFF_LOG_DNAT_ZONE >= MFF_REG0);
-    BUILD_ASSERT(MFF_LOG_DNAT_ZONE < MFF_REG0 + FLOW_N_REGS);
+    /* Make sure that all the used registers are within the NXM_NX class. */
+    BUILD_ASSERT(OVN_FLOW_N_REGS_SUPPORTED == 16);
 
     size_t n_active_backends = 0;
     for (size_t bucket_id = 0; bucket_id < cl->n_dsts; bucket_id++) {

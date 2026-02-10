@@ -205,17 +205,18 @@ struct route_msg_handle_data {
     struct vector *learned_routes;
     struct vector *stale_routes;
     const struct hmap *routes;
-    uint32_t table_id; /* requested table id. */
 };
 
 static void
-handle_route_msg(const struct route_table_msg *msg, void *data)
+handle_route_msg(const struct route_table_msg *msg,
+                 void *data,
+                 uint32_t table_id)
 {
     struct route_msg_handle_data *handle_data = data;
     const struct route_data *rd = &msg->rd;
     struct advertise_route_entry *ar;
 
-    if (handle_data->table_id != rd->rta_table_id) {
+    if (table_id != rd->rta_table_id) {
         /* We do not have the NLM_F_DUMP_FILTERED info here, so check if the
          * reported table_id matches the requested one.
          */
@@ -342,7 +343,6 @@ re_nl_sync_routes(uint32_t table_id, const struct hmap *routes,
         .learned_routes = learned_routes,
         .stale_routes = &stale_routes,
         .db = db,
-        .table_id = table_id,
     };
     route_table_dump_one_table(table_id, handle_route_msg, &data);
 
@@ -388,7 +388,6 @@ re_nl_cleanup_routes(uint32_t table_id)
         .routes_to_advertise = NULL,
         .learned_routes = NULL,
         .stale_routes = &stale_routes,
-        .table_id = table_id,
     };
     route_table_dump_one_table(table_id, handle_route_msg, &data);
 

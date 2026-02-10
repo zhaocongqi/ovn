@@ -26,53 +26,95 @@ enum ovn_controller_event {
     OVN_EVENT_MAX,
 };
 
+/* OVS versions 2.6 to 3.6 support up to 16 32-bit registers.  These can be
+ * used unconditionally.  Registers above MFF_REG15, MFF_XREG7 and MFF_XXREG3
+ * are only supported in newer versions and must not be used without prior
+ * support detection. */
+#define OVN_FLOW_N_REGS_SUPPORTED 16
+BUILD_ASSERT_DECL(FLOW_N_REGS == 32);
+BUILD_ASSERT_DECL(FLOW_N_REGS >= OVN_FLOW_N_REGS_SUPPORTED);
+
+#define CHECK_REG(NAME) \
+    BUILD_ASSERT_DECL( \
+        MFF_LOG_##NAME < MFF_REG0 + OVN_FLOW_N_REGS_SUPPORTED)
+
+#define CHECK_XXREG(NAME) \
+    BUILD_ASSERT_DECL( \
+        MFF_LOG_##NAME < MFF_XXREG0 + OVN_FLOW_N_REGS_SUPPORTED / 4)
+
+
 /* Logical fields.
  *
  * These values are documented in ovn-architecture(7), please update the
  * documentation if you change any of them. */
 #define MFF_LOG_DATAPATH MFF_METADATA /* Logical datapath (64 bits). */
 #define MFF_LOG_FLAGS      MFF_REG10  /* One of MLF_* (32 bits). */
+CHECK_REG(FLAGS);
 #define MFF_LOG_DNAT_ZONE  MFF_REG11  /* conntrack dnat zone for gateway router
                                        * (32 bits). */
+CHECK_REG(DNAT_ZONE);
 #define MFF_LOG_SNAT_ZONE  MFF_REG12  /* conntrack snat zone for gateway router
                                        * (32 bits). */
+CHECK_REG(SNAT_ZONE);
 #define MFF_LOG_CT_ZONE    MFF_REG13  /* Logical conntrack zone for lports
                                        * (0..15 of the 32 bits). */
+CHECK_REG(CT_ZONE);
 #define MFF_LOG_ENCAP_ID   MFF_REG13  /* Encap ID for lports
                                        * (16..31 of the 32 bits). */
+CHECK_REG(ENCAP_ID);
 #define MFF_LOG_INPORT     MFF_REG14  /* Logical input port (32 bits). */
+CHECK_REG(INPORT);
 #define MFF_LOG_OUTPORT    MFF_REG15  /* Logical output port (32 bits). */
+CHECK_REG(OUTPORT);
 #define MFF_LOG_TUN_OFPORT MFF_REG5   /* 16..31 of the 32 bits */
+CHECK_REG(TUN_OFPORT);
 
 /* Logical registers.
  *
  * Make sure these don't overlap with the logical fields! */
 #define MFF_LOG_REG0             MFF_REG0
+CHECK_REG(REG0);
 #define MFF_LOG_LB_ORIG_DIP_IPV4 MFF_REG4
+CHECK_REG(LB_ORIG_DIP_IPV4);
 #define MFF_LOG_LB_ORIG_TP_DPORT MFF_REG2
+CHECK_REG(LB_ORIG_TP_DPORT);
 
 #define MFF_LOG_XXREG0           MFF_XXREG0
+CHECK_XXREG(XXREG0);
 #define MFF_LOG_LB_ORIG_DIP_IPV6 MFF_XXREG1
+CHECK_XXREG(LB_ORIG_DIP_IPV6);
 
 #define MFF_N_LOG_REGS 10
 
+BUILD_ASSERT_DECL(MFF_LOG_REG0 + MFF_N_LOG_REGS
+                  <= MFF_REG0 + OVN_FLOW_N_REGS_SUPPORTED);
+
 #define MFF_LOG_LB_AFF_MATCH_IP4_ADDR MFF_REG4
+CHECK_REG(LB_AFF_MATCH_IP4_ADDR);
 #define MFF_LOG_LB_AFF_MATCH_IP6_ADDR MFF_XXREG1
+CHECK_XXREG(LB_AFF_MATCH_IP6_ADDR);
 #define MFF_LOG_LB_AFF_MATCH_PORT     MFF_REG2
+CHECK_REG(LB_AFF_MATCH_PORT);
 
 #define MFF_LOG_RESULT_REG            MFF_XXREG1
+CHECK_XXREG(RESULT_REG);
 
 #define MFF_LOG_CT_SAVED_STATE        MFF_REG4
+CHECK_REG(CT_SAVED_STATE);
 
 #define MFF_LOG_REMOTE_OUTPORT MFF_REG1  /* Logical remote output
                                           * port (32 bits). */
+CHECK_REG(REMOTE_OUTPORT);
 
 /* Logical registers that are needed for backwards
  * compatibility with older northd versions.
  * XXX: All of them can be removed in 26.09. */
 #define MFF_LOG_LB_ORIG_DIP_IPV4_OLD         MFF_REG1
+CHECK_REG(LB_ORIG_DIP_IPV4_OLD);
 #define MFF_LOG_LB_AFF_MATCH_PORT_OLD        MFF_REG8
+CHECK_REG(LB_AFF_MATCH_PORT_OLD);
 #define MFF_LOG_LB_AFF_MATCH_LS_IP6_ADDR_OLD MFF_XXREG0
+CHECK_XXREG(LB_AFF_MATCH_LS_IP6_ADDR_OLD);
 
 /* Maximum number of networks supported by 4-bit flags.network_id. */
 #define OVN_MAX_NETWORK_ID \

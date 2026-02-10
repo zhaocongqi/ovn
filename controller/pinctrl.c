@@ -6368,7 +6368,7 @@ static void
 reload_metadata(struct ofpbuf *ofpacts, const struct match *md)
 {
     enum mf_field_id md_fields[] = {
-#if FLOW_N_REGS == 16
+#if OVN_FLOW_N_REGS_SUPPORTED == 16
         MFF_REG0,
         MFF_REG1,
         MFF_REG2,
