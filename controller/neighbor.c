@@ -314,6 +314,13 @@ neighbor_collect_ip_mac_to_advertise(
     const struct sbrec_advertised_mac_binding *adv_mb;
     SBREC_ADVERTISED_MAC_BINDING_FOR_EACH_EQUAL (adv_mb, target,
                                                  n_ctx_in->sbrec_amb_by_dp) {
+        if (!adv_mb->logical_port) {
+            /* Skip the NULL logical_port, this can happen in some cases
+             * during controller startup. See
+             * https://issues.redhat.com/browse/FDP-3114 for more details. */
+            continue;
+        }
+
         const struct sbrec_port_binding *pb =
             neighbor_get_relevant_port_binding(n_ctx_in->sbrec_pb_by_name,
                                                adv_mb->logical_port);
