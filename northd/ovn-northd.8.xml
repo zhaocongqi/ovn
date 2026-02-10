@@ -5507,8 +5507,9 @@ icmp6 {
 
     <p>
       In the common case where the Ethernet destination has been resolved, this
-      table outputs the packet.  Otherwise, it composes and sends an ARP or
-      IPv6 Neighbor Solicitation request.  It holds the following flows:
+      table advances the packet to the next table.  Otherwise, it composes and
+      sends an ARP or IPv6 Neighbor Solicitation request.  It holds the
+      following flows:
     </p>
 
     <ul>
@@ -5577,9 +5578,20 @@ nd_ns {
 
       <li>
         Known MAC address.  A priority-0 flow with match <code>1</code> has
-        actions <code>output;</code>.
+        actions <code>next;</code>.
       </li>
     </ul>
+
+    <h3>Ingress Table 28: ECMP symmetric reply processing for egress</h3>
+    <p>
+      This table contains logical flows that commit IP traffic forwarded by
+      ECMP symmetric reply static routes in the "route direction", that is,
+      for sessions initiated from behind such routes.  These flows can be hit
+      only on gateway routers, the only type of routers that supports ECMP
+      symmetric reply routes.  As the egress port of the traffic needs to be
+      stored in conntrack for these sessions, one logical flow is added for
+      each logical router port.
+    </p>
 
     <h3>Egress Table 0: Check DNAT local </h3>
 

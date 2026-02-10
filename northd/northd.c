@@ -201,6 +201,9 @@ BUILD_ASSERT_DECL(ACL_OBS_STAGE_MAX < (1 << 2));
 #define REGBIT_DHCP_RELAY_REQ_CHK "reg9[7]"
 #define REGBIT_DHCP_RELAY_RESP_CHK "reg9[8]"
 #define REGBIT_NEXTHOP_IS_IPV4    "reg9[9]"
+/* Register bit to store whether we need to commit this ECMP symmetric
+ * reply processed packet after resolving its next-hop MAC address. */
+#define REGBIT_NEEDS_ECMP_STATEFUL_COMMIT "reg9[10]"
 
 /* Register to store the eth address associated to a router port for packets
  * received in S_ROUTER_IN_ADMISSION.
@@ -12499,13 +12502,16 @@ build_ecmp_route_flow(struct lflow_table *lflows,
                       "%s = %s; "
                       "eth.src = %s; "
                       "outport = %s; "
-                      REGBIT_NEXTHOP_IS_IPV4" = %d; "
-                      "next;",
+                      REGBIT_NEXTHOP_IS_IPV4" = %d; ",
                       is_ipv4_nexthop ? REG_SRC_IPV4 : REG_SRC_IPV6,
                       route->lrp_addr_s,
                       route->out_port->lrp_networks.ea_s,
                       route->out_port->json_key,
                       is_ipv4_nexthop);
+        if (route->ecmp_symmetric_reply) {
+            ds_put_cstr(&actions, REGBIT_NEEDS_ECMP_STATEFUL_COMMIT " = 1; ");
+        }
+        ds_put_cstr(&actions, "next;");
         ovn_lflow_add(lflows, od, S_ROUTER_IN_IP_ROUTING_ECMP, 100,
                       ds_cstr(&match), ds_cstr(&actions), lflow_ref,
                       WITH_HINT(route->source_hint));
@@ -15954,7 +15960,7 @@ build_arp_request_flows_for_lrouter(
                       "ip6.dst = %s; "
                       "nd.target = %s; "
                       "output; "
-                      "}; output;", ETH_ADDR_ARGS(eth_dst), sn_addr_s,
+                      "}; next;", ETH_ADDR_ARGS(eth_dst), sn_addr_s,
                       route->nexthop);
 
         ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 200,
@@ -15974,7 +15980,7 @@ build_arp_request_flows_for_lrouter(
                   "arp.tpa = " REG_NEXT_HOP_IPV4 "; "
                   "arp.op = 1; " /* ARP request */
                   "output; "
-                  "}; output;",
+                  "}; next;",
                   lflow_ref, WITH_CTRL_METER(copp_meter_get(COPP_ARP_RESOLVE,
                                                             od->nbr->copp,
                                                             meter_groups)));
@@ -15984,11 +15990,40 @@ build_arp_request_flows_for_lrouter(
                   "nd_ns { "
                   "nd.target = " REG_NEXT_HOP_IPV6 "; "
                   "output; "
-                  "}; output;",
+                  "}; next;",
                   lflow_ref, WITH_CTRL_METER(copp_meter_get(COPP_ND_NS_RESOLVE,
                                                             od->nbr->copp,
                                                             meter_groups)));
-    ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 0, "1", "output;",
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_ARP_REQUEST, 0, "1", "next;",
+                  lflow_ref);
+}
+
+static void
+build_ecmp_stateful_egr_flows_for_lrouter_port(
+    struct ovn_port *op, struct lflow_table *lflows,
+    struct ds *match,  struct ds *actions,
+    struct lflow_ref *lflow_ref)
+{
+    ds_clear(match);
+    ds_put_format(match, REGBIT_NEEDS_ECMP_STATEFUL_COMMIT " == 1 && ip && "
+                  "outport == %s", op->json_key);
+
+    ds_clear(actions);
+    ds_put_format(actions,
+                  "ct_commit { ct_label.ecmp_reply_eth = eth.dst; "
+                              "ct_mark.ecmp_reply_port = %" PRId64 ";}; "
+                  "output;",
+                  op->sb->tunnel_key);
+    ovn_lflow_add(lflows, op->od, S_ROUTER_IN_ECMP_STATEFUL_EGR, 100,
+                  ds_cstr(match), ds_cstr(actions), lflow_ref);
+}
+
+static void
+build_ecmp_stateful_egr_flows_for_lrouter(
+        struct ovn_datapath *od, struct lflow_table *lflows,
+        struct lflow_ref *lflow_ref)
+{
+    ovn_lflow_add(lflows, od, S_ROUTER_IN_ECMP_STATEFUL_EGR, 0, "1", "output;",
                   lflow_ref);
 }
 
@@ -19039,6 +19074,8 @@ build_lswitch_and_lrouter_iterate_by_lr(struct ovn_datapath *od,
                                         &lsi->actions,
                                         lsi->meter_groups,
                                         od->datapath_lflows);
+    build_ecmp_stateful_egr_flows_for_lrouter(od, lsi->lflows,
+                                              od->datapath_lflows);
     build_lrouter_network_id_flows(od, lsi->lflows, &lsi->match,
                                    &lsi->actions, od->datapath_lflows);
     build_misc_local_traffic_drop_flows_for_lrouter(od, lsi->lflows,
@@ -19129,6 +19166,10 @@ build_lswitch_and_lrouter_iterate_by_lrp(struct ovn_port *op,
     build_lrouter_routing_protocol_redirect(op, lsi->lflows, &lsi->match,
                                             &lsi->actions, op->lflow_ref,
                                             lsi->ls_ports, lsi->bfd_ports);
+    build_ecmp_stateful_egr_flows_for_lrouter_port(op, lsi->lflows,
+                                                   &lsi->match,
+                                                   &lsi->actions,
+                                                   op->lflow_ref);
 }
 
 static void *

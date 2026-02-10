@@ -6679,7 +6679,8 @@ NS_CHECK_EXEC([alice1], [ping -q -c 3 -i 0.3 -w 2 172.16.0.1 | FORMAT_PING], \
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 0x401020500000000 | FORMAT_CT(172.16.0.1) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
 sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
-tcp,orig=(src=172.16.0.1,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=10.0.0.2,dst=172.16.0.1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x401020500000000,protoinfo=(state=<cleared>)
+icmp,orig=(src=10.0.0.2,dst=172.16.0.1,id=<cleared>,type=8,code=0),reply=(src=172.16.0.1,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>,mark=<cleared>,labels=0x401020500000000
+tcp,orig=(src=10.0.0.2,dst=172.16.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.0.1,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x401020500000000,protoinfo=(state=<cleared>)
 ])
 
 # Now remove one ECMP route and check that traffic is still being conntracked.
@@ -6695,7 +6696,8 @@ NS_CHECK_EXEC([alice1], [ping -q -c 3 -i 0.3 -w 2 172.16.0.1 | FORMAT_PING], \
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 0x401020500000000 | FORMAT_CT(172.16.0.1) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
 sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
-tcp,orig=(src=172.16.0.1,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),reply=(src=10.0.0.2,dst=172.16.0.1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x401020500000000,protoinfo=(state=<cleared>)
+icmp,orig=(src=10.0.0.2,dst=172.16.0.1,id=<cleared>,type=8,code=0),reply=(src=172.16.0.1,dst=10.0.0.2,id=<cleared>,type=0,code=0),zone=<cleared>,mark=<cleared>,labels=0x401020500000000
+tcp,orig=(src=10.0.0.2,dst=172.16.0.1,sport=<cleared>,dport=<cleared>),reply=(src=172.16.0.1,dst=10.0.0.2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x401020500000000,protoinfo=(state=<cleared>)
 ])
 
 OVN_CLEANUP_CONTROLLER([hv1])
@@ -6904,7 +6906,8 @@ NS_CHECK_EXEC([alice1], [ping -q -c 3 -i 0.3 -w 2 fd07::1 | FORMAT_PING], \
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 0x1001020400000000 | FORMAT_CT(fd07::1) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
 sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
-tcp,orig=(src=fd07::1,dst=fd01::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::2,dst=fd07::1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x1001020400000000,protoinfo=(state=<cleared>)
+icmpv6,orig=(src=fd01::2,dst=fd07::1,id=<cleared>,type=128,code=0),reply=(src=fd07::1,dst=fd01::2,id=<cleared>,type=129,code=0),zone=<cleared>,mark=<cleared>,labels=0x1001020400000000
+tcp,orig=(src=fd01::2,dst=fd07::1,sport=<cleared>,dport=<cleared>),reply=(src=fd07::1,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x1001020400000000,protoinfo=(state=<cleared>)
 ])
 
 # Now remove one ECMP route and check that traffic is still being conntracked.
@@ -6920,7 +6923,8 @@ NS_CHECK_EXEC([alice1], [ping -q -c 3 -i 0.3 -w 2 fd07::1 | FORMAT_PING], \
 AT_CHECK([ovs-appctl dpctl/dump-conntrack | grep 0x1001020400000000 | FORMAT_CT(fd07::1) | \
 sed -e 's/zone=[[0-9]]*/zone=<cleared>/' |
 sed -e 's/mark=[[0-9]]*/mark=<cleared>/' | sort], [0], [dnl
-tcp,orig=(src=fd07::1,dst=fd01::2,sport=<cleared>,dport=<cleared>),reply=(src=fd01::2,dst=fd07::1,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x1001020400000000,protoinfo=(state=<cleared>)
+icmpv6,orig=(src=fd01::2,dst=fd07::1,id=<cleared>,type=128,code=0),reply=(src=fd07::1,dst=fd01::2,id=<cleared>,type=129,code=0),zone=<cleared>,mark=<cleared>,labels=0x1001020400000000
+tcp,orig=(src=fd01::2,dst=fd07::1,sport=<cleared>,dport=<cleared>),reply=(src=fd07::1,dst=fd01::2,sport=<cleared>,dport=<cleared>),zone=<cleared>,mark=<cleared>,labels=0x1001020400000000,protoinfo=(state=<cleared>)
 ])
 
 OVN_CLEANUP_CONTROLLER([hv1])

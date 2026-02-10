@@ -602,6 +602,8 @@ ovn_datapath_is_stale(const struct ovn_datapath *od)
     PIPELINE_STAGE(ROUTER, IN,  GW_REDIRECT,     25, "lr_in_gw_redirect")     \
     PIPELINE_STAGE(ROUTER, IN,  NETWORK_ID,      26, "lr_in_network_id")      \
     PIPELINE_STAGE(ROUTER, IN,  ARP_REQUEST,     27, "lr_in_arp_request")     \
+    PIPELINE_STAGE(ROUTER, IN,  ECMP_STATEFUL_EGR, 28,                        \
+                                "lr_in_ecmp_stateful_egr")                    \
                                                                       \
     /* Logical router egress stages. */                               \
     PIPELINE_STAGE(ROUTER, OUT, CHECK_DNAT_LOCAL,   0,                       \
