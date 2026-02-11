@@ -1474,6 +1474,22 @@ test_parse_actions(struct ovs_cmdl_context *ctx OVS_UNUSED)
     flow_collector_ids_destroy(&collector_ids);
     exit(ok ? EXIT_SUCCESS : EXIT_FAILURE);
 }
+
+static void
+test_parse_eth_addr(struct ovs_cmdl_context *ctx)
+{
+    unsigned int plen;
+    struct eth_addr mac;
+
+    if (!eth_addr_parse_masked(ctx->argv[1], &mac, &plen)) {
+        ovs_assert(eth_addr_equals(mac, eth_addr_zero));
+        exit(EXIT_FAILURE);
+    }
+
+    printf(ETH_ADDR_FMT "/" ETH_ADDR_FMT " " ETH_ADDR_FMT "/%u\n",
+           ETH_ADDR_ARGS(mac), ETH_ADDR_ARGS(eth_addr_create_mask(plen)),
+           ETH_ADDR_ARGS(mac), plen);
+}
 
 static unsigned int
 parse_relops(const char *s)
@@ -1560,6 +1576,9 @@ exhaustive N\n\
 parse-actions\n\
   Parses OVN actions from stdin and prints the equivalent OpenFlow actions\n\
   on stdout.\n\
+parse-eth-addr\n\
+  Parses masked MAC address from stdin and prints the equivalent MAC/plen\n\
+  and MAC/mask to stdout\n\
 ",
            program_name, program_name);
     exit(EXIT_SUCCESS);
@@ -1684,6 +1703,9 @@ test_ovn_main(int argc, char *argv[])
 
         /* Actions. */
         {"parse-actions", NULL, 0, 0, test_parse_actions, OVS_RO},
+
+        /* Utils. */
+        {"parse-eth-addr", NULL, 1, 1, test_parse_eth_addr, OVS_RO},
 
         {NULL, NULL, 0, 0, NULL, OVS_RO},
     };

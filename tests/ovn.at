@@ -2443,6 +2443,55 @@ check ovstest test-sparse-array add
 check ovstest test-sparse-array remove-replace
 AT_CLEANUP
 
+AT_SETUP([Parse MAC])
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:xx], [1])
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:06], [0], [dnl
+01:02:03:04:05:06/ff:ff:ff:ff:ff:ff 01:02:03:04:05:06/48
+])
+
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:06/-1], [1])
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:06/-40], [1])
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:06/49], [1])
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:06/128], [1])
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:06/48], [0], [dnl
+01:02:03:04:05:06/ff:ff:ff:ff:ff:ff 01:02:03:04:05:06/48
+])
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:06/40], [0], [dnl
+01:02:03:04:05:06/ff:ff:ff:ff:ff:00 01:02:03:04:05:06/40
+])
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:00/40], [0], [dnl
+01:02:03:04:05:00/ff:ff:ff:ff:ff:00 01:02:03:04:05:00/40
+])
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:06/25], [0], [dnl
+01:02:03:04:05:06/ff:ff:ff:80:00:00 01:02:03:04:05:06/25
+])
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:00:00:00/25], [0], [dnl
+01:02:03:00:00:00/ff:ff:ff:80:00:00 01:02:03:00:00:00/25
+])
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:06/0], [0], [dnl
+01:02:03:04:05:06/00:00:00:00:00:00 01:02:03:04:05:06/0
+])
+
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:06/ff:ff:ff:ff:ff:xx], [1])
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:06/ff:ff:ff:ff:0f:00], [1])
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:06/01:02:03:04:05:00], [1])
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:06/ff:ff:ff:ff:ff:00], [0], [dnl
+01:02:03:04:05:06/ff:ff:ff:ff:ff:00 01:02:03:04:05:06/40
+])
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:06/ff:ff:ff:ff:00:00], [0], [dnl
+01:02:03:04:05:06/ff:ff:ff:ff:00:00 01:02:03:04:05:06/32
+])
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:06/ff:ff:ff:00:00:00], [0], [dnl
+01:02:03:04:05:06/ff:ff:ff:00:00:00 01:02:03:04:05:06/24
+])
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:06/ff:ff:ff:ff:ff:f0], [0], [dnl
+01:02:03:04:05:06/ff:ff:ff:ff:ff:f0 01:02:03:04:05:06/44
+])
+AT_CHECK([ovstest test-ovn parse-eth-addr 01:02:03:04:05:06/00:00:00:00:00:00], [0], [dnl
+01:02:03:04:05:06/00:00:00:00:00:00 01:02:03:04:05:06/0
+])
+AT_CLEANUP
+
 AT_BANNER([OVN end-to-end tests])
 
 OVN_FOR_EACH_NORTHD([
