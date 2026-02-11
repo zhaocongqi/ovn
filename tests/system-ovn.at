@@ -19933,7 +19933,7 @@ check ovn-nbctl set logical_switch_port child-4 options:receive_multicast=false 
 
 AS_BOX([Test-1: Single NF without health check])
 
-check ovn-nbctl nf-add nf0 nf-p1 nf-p2
+check ovn-nbctl nf-add nf0 1 nf-p1 nf-p2
 nf0_uuid=$(fetch_column nb:network_function _uuid name=nf0)
 check ovn-nbctl nfg-add nfg0 1 inline nf0
 nfg_uuid=$(fetch_column nb:network_function_group _uuid name=nfg0)
@@ -20035,7 +20035,7 @@ validate_single_nf_no_health_check "server" "client" "192.168.1.10" "Outbound"
 AS_BOX([Test-2: Two NFs with health check config enabled])
 
 # Add second NF
-check ovn-nbctl nf-add nf1 nf-p3 nf-p4
+check ovn-nbctl nf-add nf1 2 nf-p3 nf-p4
 nf1_uuid=$(fetch_column nb:network_function _uuid name=nf1)
 
 # Add bridge for nf1

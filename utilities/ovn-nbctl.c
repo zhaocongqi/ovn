@@ -393,7 +393,7 @@ Network function group commands:\n\
                             network-function-group\n\
 \n\
 Network function commands:\n\
-  nf-add NETWORK-FUNCTION PORT-IN PORT-OUT\n\
+  nf-add NETWORK-FUNCTION ID PORT-IN PORT-OUT\n\
                            create a network-function\n\
   nf-del NETWORK-FUNCTION  delete a network-function\n\
   nf-list                  print all network-functions\n\
@@ -2483,6 +2483,7 @@ nbctl_pre_nf_add(struct ctl_context *ctx)
 
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
     ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_id);
     ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_inport);
     ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_outport);
 }
@@ -2495,14 +2496,22 @@ nbctl_nf_add(struct ctl_context *ctx)
 
     bool may_exist = shash_find(&ctx->options, "--may-exist") != NULL;
 
-    char * error = lsp_by_name_or_uuid(ctx, ctx->argv[2], true, &lsp_in);
+    char * error = lsp_by_name_or_uuid(ctx, ctx->argv[3], true, &lsp_in);
     if (error) {
         ctx->error = error;
         return;
     }
-    error = lsp_by_name_or_uuid(ctx, ctx->argv[3], true, &lsp_out);
+    error = lsp_by_name_or_uuid(ctx, ctx->argv[4], true, &lsp_out);
     if (error) {
         ctx->error = error;
+        return;
+    }
+
+    /* Validate and parse ID */
+    int64_t nf_id = 0;
+    if (!ovs_scan(ctx->argv[2], "%"SCNd64, &nf_id)
+            || nf_id < 1 || nf_id > 255) {
+        ctl_error(ctx, "network-function id must be between 1 and 255");
         return;
     }
 
@@ -2527,6 +2536,9 @@ nbctl_nf_add(struct ctl_context *ctx)
         nf = nbrec_network_function_insert(ctx->txn);
         nbrec_network_function_set_name(nf, nf_name);
     }
+
+    /* Set ID */
+    nbrec_network_function_set_id(nf, nf_id);
 
     /* Set/update the ports */
     nbrec_network_function_set_inport(nf, lsp_in);
@@ -2560,6 +2572,7 @@ static void
 nbctl_pre_nf_list(struct ctl_context *ctx)
 {
     ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_name);
+    ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_id);
     ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_inport);
     ovsdb_idl_add_column(ctx->idl, &nbrec_network_function_col_outport);
     ovsdb_idl_add_column(ctx->idl, &nbrec_logical_switch_port_col_name);
@@ -2577,9 +2590,9 @@ nbctl_nf_list(struct ctl_context *ctx)
         const char *linport_name = linport ? linport->name : "<not_set>";
         const char *loutport_name = loutport ? loutport->name : "<not_set>";
         smap_add_format(&nfs, nf->name,
-                        UUID_FMT " (%s) in:%s out:%s",
+                        UUID_FMT " (%s) id:%"PRId64" in:%s out:%s",
                         UUID_ARGS(&nf->header_.uuid),
-                        nf->name, linport_name, loutport_name);
+                        nf->name, nf->id, linport_name, loutport_name);
     }
     const struct smap_node **nodes = smap_sort(&nfs);
     for (size_t i = 0; i < smap_count(&nfs); i++) {
@@ -8877,7 +8890,7 @@ static const struct ctl_command_syntax nbctl_commands[] = {
       nbctl_nf_group_del_network_function, NULL, "--if-exists", RW },
 
     /* network-function commands. */
-    { "nf-add", 3, 3, "NETWORK-FUNCTION PORT-IN PORT-OUT",
+    { "nf-add", 4, 4, "NETWORK-FUNCTION ID PORT-IN PORT-OUT",
       nbctl_pre_nf_add,
       nbctl_nf_add,
       NULL, "--may-exist", RW },

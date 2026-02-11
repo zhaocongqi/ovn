@@ -36306,7 +36306,7 @@ check ovs-vsctl add-port br-int ls0-hv -- set Interface ls0-hv external-ids:ifac
 check ovn-nbctl lr-add lr0
 
 check ovn-nbctl ls-add ls0
-check ovn-nbctl lsp-add ls0 ls0-lr0 
+check ovn-nbctl lsp-add ls0 ls0-lr0
 check ovn-nbctl lsp-set-type ls0-lr0 router
 check ovn-nbctl lsp-set-addresses ls0-lr0 router
 check ovn-nbctl lrp-add lr0 lr0-ls0 00:00:00:00:00:01 10.0.0.1
@@ -44054,7 +44054,7 @@ create_logical_topology() {
     check ovn-nbctl set logical_switch_port $sw-nf-p2 \
         options:receive_multicast=false options:lsp_learn_mac=false \
         options:is-nf=true options:nf-linked-port=$sw-nf-p1
-    check ovn-nbctl nf-add nf0 $sw-nf-p1 $sw-nf-p2
+    check ovn-nbctl nf-add nf0 1 $sw-nf-p1 $sw-nf-p2
     check ovn-nbctl nfg-add nfg0 1 inline nf0
     check ovn-nbctl pg-add pg0 $sw-p1
     check ovn-nbctl acl-add pg0 from-lport 1002 "inport == @pg0 && ip4.dst == 192.168.0.12" allow-related nfg0
@@ -44244,7 +44244,7 @@ create_logical_topology() {
     check ovn-nbctl set logical_switch_port $sw-nf-p2 \
         options:receive_multicast=false options:lsp_learn_mac=false \
         options:is-nf=true options:nf-linked-port=$sw-nf-p1
-    check ovn-nbctl nf-add nf0 $sw-nf-p1 $sw-nf-p2
+    check ovn-nbctl nf-add nf0 1 $sw-nf-p1 $sw-nf-p2
     check ovn-nbctl nfg-add nfg0 1 inline nf0
     check ovn-nbctl pg-add pg0 $sw-p1
     check ovn-nbctl acl-add pg0 to-lport 1002 "outport == @pg0 && ip4.src == 192.168.0.12" allow-related nfg0

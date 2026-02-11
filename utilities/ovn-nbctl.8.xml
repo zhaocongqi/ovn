@@ -475,16 +475,17 @@
     <h2>Network Function Commands</h2>
 
     <dl>
-      <dt>[<code>--may-exist</code>] <code>nf-add</code> <var>nf</var> <var>inport</var> <var>outport</var></dt>
+      <dt>[<code>--may-exist</code>] <code>nf-add</code> <var>nf</var> <var>id</var> <var>inport</var> <var>outport</var></dt>
       <dd>
         <p>
-          Creates a new network function named <var>nf</var> with logical
-          switch ports <var>inport</var> and <var>outport</var>. Both the
-          ports must be on the same logical switch and must be already
-          created. When used in an ACL action, traffic matching the ACL
-          are redirected to the <var>inport</var> if it is from-lport ACL
-          and to the <var>outport</var> if it is to-lport ACL. The response
-          packets are sent through the same ports in reverse order.
+          Creates a new network function named <var>nf</var> with the specified
+          <var>id</var> (an integer between 1 and 255) and logical switch ports
+          <var>inport</var> and <var>outport</var>. Both the ports must be on
+          the same logical switch and must be already created. When used in an
+          ACL action, traffic matching the ACL are redirected to the
+          <var>inport</var> if it is from-lport ACL and to <var>outport</var>
+          if it is to-lport ACL. The response packets are sent through the same
+          ports in reverse order.
         </p>
 
         <p>
@@ -1498,7 +1499,7 @@
          The optional argument <var>protocol</var> must be either
          <code>tcp</code>,  <code>udp</code> or <code>sctp</code>. This argument
          is useful when a port number is provided as part of the <var>vip</var>.
-         If the <var>protocol</var> is unspecified and a port number is provided 
+         If the <var>protocol</var> is unspecified and a port number is provided
          as part of the <var>vip</var>, OVN assumes the <var>protocol</var> to
          be <code>tcp</code>.
         </p>

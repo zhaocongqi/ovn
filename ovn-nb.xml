@@ -6484,6 +6484,11 @@ or
       Name of the <ref table="Network_Function"/>. Name should be unique.
     </column>
 
+    <column name="id">
+      A unique integer between 1 and 255 must be assigned to each
+      <code>Network_Function</code>.
+    </column>
+
     <column name="inport">
       <ref table="Logical_Switch_Port"/>  where request traffic for from-lport
       ACL and response traffic for to-lport ACL is redirected.

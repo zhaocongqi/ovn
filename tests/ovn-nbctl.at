@@ -3245,13 +3245,13 @@ AT_CHECK([check ovn-nbctl set logical_switch_port svc-port1 \
     options:is-nf=true options:nf-linked-port=svc-port0])
 
 # Create network-function.
-AT_CHECK([ovn-nbctl nf-add nf0 svc-port0 svc-port1])
-AT_CHECK([ovn-nbctl nf-add nf0 svc-port0 svc-port1], [1], [],
+AT_CHECK([ovn-nbctl nf-add nf0 1 svc-port0 svc-port1])
+AT_CHECK([ovn-nbctl nf-add nf0 1 svc-port0 svc-port1], [1], [],
   [ovn-nbctl: nf0: same name network-function already exists
 ])
-AT_CHECK([ovn-nbctl --may-exist nf-add nf0 svc-port0 svc-port1])
+AT_CHECK([ovn-nbctl --may-exist nf-add nf0 1 svc-port0 svc-port1])
 AT_CHECK([ovn-nbctl nf-list | uuidfilt], [0], [dnl
-<0> (nf0) in:svc-port0 out:svc-port1
+<0> (nf0) id:1 in:svc-port0 out:svc-port1
 ])
 
 # Test --may-exist overwrite behavior: update existing network function with new ports
@@ -3263,25 +3263,25 @@ AT_CHECK([check ovn-nbctl set logical_switch_port svc-port4 \
 AT_CHECK([check ovn-nbctl set logical_switch_port svc-port5 \
     options:receive_multicast=false options:lsp_learn_fdb=false \
     options:is-nf=true options:nf-linked-port=svc-port4])
-AT_CHECK([ovn-nbctl --may-exist nf-add nf0 svc-port4 svc-port5])
+AT_CHECK([ovn-nbctl --may-exist nf-add nf0 1 svc-port4 svc-port5])
 AT_CHECK([ovn-nbctl nf-list | uuidfilt], [0], [dnl
-<0> (nf0) in:svc-port4 out:svc-port5
+<0> (nf0) id:1 in:svc-port4 out:svc-port5
 ])
 
 # Create two more network-functions, one with same inport and outport.
 AT_CHECK([check ovn-nbctl lsp-add ls0 svc-port2])
 AT_CHECK([check ovn-nbctl lsp-add ls0 svc-port3])
-AT_CHECK([ovn-nbctl nf-add nf1 svc-port2 svc-port3])
+AT_CHECK([ovn-nbctl nf-add nf1 2 svc-port2 svc-port3])
 AT_CHECK([ovn-nbctl nf-list | uuidfilt], [0], [dnl
-<0> (nf0) in:svc-port4 out:svc-port5
-<1> (nf1) in:svc-port2 out:svc-port3
+<0> (nf0) id:1 in:svc-port4 out:svc-port5
+<1> (nf1) id:2 in:svc-port2 out:svc-port3
 ])
 
-AT_CHECK([ovn-nbctl nf-add nf2 svc-port2 svc-port2])
+AT_CHECK([ovn-nbctl nf-add nf2 3 svc-port2 svc-port2])
 AT_CHECK([ovn-nbctl nf-list | uuidfilt], [0], [dnl
-<0> (nf0) in:svc-port4 out:svc-port5
-<1> (nf1) in:svc-port2 out:svc-port3
-<2> (nf2) in:svc-port2 out:svc-port2
+<0> (nf0) id:1 in:svc-port4 out:svc-port5
+<1> (nf1) id:2 in:svc-port2 out:svc-port3
+<2> (nf2) id:3 in:svc-port2 out:svc-port2
 ])
 
 # Create a network-function-group.
@@ -3334,10 +3334,30 @@ AT_CHECK([ovn-nbctl nfg-list | uuidfilt], [0], [])
 AT_CHECK([ovn-nbctl nf-del nf1])
 AT_CHECK([ovn-nbctl nf-del nf0])
 AT_CHECK([ovn-nbctl nf-list | uuidfilt], [0], [dnl
-<0> (nf2) in:svc-port2 out:svc-port2
+<0> (nf2) id:3 in:svc-port2 out:svc-port2
 ])
 AT_CHECK([ovn-nbctl nf-del nf2])
 AT_CHECK([ovn-nbctl nf-list | uuidfilt], [0], [])
+
+# Test ID validation and uniqueness
+AT_CHECK([check ovn-nbctl lsp-add ls0 svc-port6])
+AT_CHECK([check ovn-nbctl lsp-add ls0 svc-port7])
+# Test invalid ID (out of range)
+AT_CHECK([ovn-nbctl nf-add nf3 0 svc-port6 svc-port7], [1], [],
+  [ovn-nbctl: network-function id must be between 1 and 255
+])
+AT_CHECK([ovn-nbctl nf-add nf3 256 svc-port6 svc-port7], [1], [],
+  [ovn-nbctl: network-function id must be between 1 and 255
+])
+AT_CHECK([ovn-nbctl nf-add nf3 abc svc-port6 svc-port7], [1], [],
+  [ovn-nbctl: network-function id must be between 1 and 255
+])
+# Test valid ID
+AT_CHECK([ovn-nbctl nf-add nf3 10 svc-port6 svc-port7])
+AT_CHECK([ovn-nbctl nf-list | uuidfilt], [0], [dnl
+<0> (nf3) id:10 in:svc-port6 out:svc-port7
+])
+AT_CHECK([ovn-nbctl nf-del nf3])
 ])
 
 AT_SETUP([ovn-nbctl - TLS server name indication (SNI) with --ssl-server-name])
