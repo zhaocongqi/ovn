@@ -143,8 +143,8 @@ ct_label = NXM_NX_CT_LABEL
 ct_label.acl_id = ct_label[80..95]
 ct_label.ecmp_reply_eth = ct_label[32..79]
 ct_label.label = ct_label[96..127]
-ct_label.nf_group = ct_label[7]
-ct_label.nf_group_id = ct_label[17..24]
+ct_label.nf = ct_label[7]
+ct_label.nf_id = ct_label[17..24]
 ct_label.obs_point_id = ct_label[96..127]
 ct_label.obs_unused = ct_label[0..95]
 ct_label.tun_if = ct_label[8]
@@ -859,8 +859,8 @@ next();
     Syntax error at `)' expecting "pipeline" or "table".
 next(10;
     Syntax error at `;' expecting `)'.
-next(33);
-    "next" action cannot advance beyond table 33.
+next(34);
+    "next" action cannot advance beyond table 34.
 
 next(table=lflow_table);
     formats as next;

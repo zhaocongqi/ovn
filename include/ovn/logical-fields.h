@@ -291,18 +291,18 @@ const struct ovn_field *ovn_field_from_name(const char *name);
 #define OVN_CT_OBS_STAGE_1ST_BIT 4
 #define OVN_CT_OBS_STAGE_END_BIT 5
 #define OVN_CT_ALLOW_ESTABLISHED_BIT 6
-#define OVN_CT_NF_GROUP_BIT 7
+#define OVN_CT_NF_BIT 7
 #define OVN_CT_TUN_IF_BIT 8
 
 #define OVN_CT_BLOCKED 1
 #define OVN_CT_NATTED  2
 #define OVN_CT_LB_SKIP_SNAT 4
 #define OVN_CT_LB_FORCE_SNAT 8
-#define OVN_CT_NF_GROUP 128
+#define OVN_CT_NF 128
 #define OVN_CT_TUN_IF 256
 
-#define OVN_CT_NF_GROUP_ID_1ST_BIT 17
-#define OVN_CT_NF_GROUP_ID_END_BIT 24
+#define OVN_CT_NF_ID_1ST_BIT 17
+#define OVN_CT_NF_ID_END_BIT 24
 #define OVN_CT_TUN_IF_1ST_BIT 80
 #define OVN_CT_TUN_IF_END_BIT 95
 

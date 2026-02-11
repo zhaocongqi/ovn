@@ -172,7 +172,10 @@ static bool vxlan_mode;
 #define REGBIT_NF_ENABLED         "reg8[21]"
 #define REGBIT_NF_ORIG_DIR        "reg8[22]"
 #define REGBIT_NF_EGRESS_LOOPBACK "reg8[23]"
+/* Register to store the network function group id */
 #define REG_NF_GROUP_ID           "reg0[22..29]"
+/* REG_NF_ID overrides REG_NF_GROUP_ID in the pre_network_function stage. */
+#define REG_NF_ID                 "reg0[22..29]"
 
 enum acl_observation_stage {
     ACL_OBS_FROM_LPORT          = 0,
@@ -273,7 +276,9 @@ static const char *reg_ct_state[] = {
  * |    | REGBIT_ACL_HINT_{ALLOW_NEW/ALLOW/DROP/BLOCK} |   |                                   |
  * |    |     REGBIT_ACL_{LABEL/STATELESS}             |   |                                   |
  * |    |     REG_NF_GROUP_ID (22..29)                 |   |                                   |
- * |    |     (>= ACL_EVAL* && <= NF*)                 |   |                                   |
+ * |    |     (>= ACL_EVAL* && <= PRE_NF*)             |   |                                   |
+ * |    |     REG_NF_ID (22..29)                       |   |                                   |
+ * |    |     (> PRE_NF* && <= NF*)                    |   |                                   |
  * +----+----------------------------------------------+   |                                   |
  * | R1 |       REG_CT_TP_DST (0..15)                  |   |                                   |
  * |    |       REG_CT_PROTO (16..23)                  |   |                                   |
@@ -7662,7 +7667,7 @@ build_acl_log_related_flows(const struct ovn_datapath *od,
 
     ds_clear(actions);
     build_acl_log(actions, acl, meter_groups);
-    ds_put_cstr(actions, REGBIT_NF_ENABLED" = ct_label.nf_group; ");
+    ds_put_cstr(actions, REGBIT_NF_ENABLED" = ct_label.nf; ");
     ds_put_cstr(actions, REGBIT_ACL_VERDICT_ALLOW" = 1; next;");
     /* Related/reply flows need to be set on the opposite pipeline
      * from where the ACL itself is set.
@@ -7832,12 +7837,12 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
                       ds_cstr(&match), REGBIT_ACL_HINT_DROP" = 0; "
                       REGBIT_ACL_HINT_BLOCK" = 0; "
                       REGBIT_ACL_HINT_ALLOW_REL" = 1; "
-                      REGBIT_NF_ENABLED" = ct_label.nf_group; "
+                      REGBIT_NF_ENABLED" = ct_label.nf; "
                       REGBIT_ACL_VERDICT_ALLOW" = 1; next;",
                       lflow_ref);
         ovn_lflow_add(lflows, od, S_SWITCH_OUT_ACL_EVAL, UINT16_MAX - 3,
                       ds_cstr(&match),
-                      REGBIT_NF_ENABLED" = ct_label.nf_group; "
+                      REGBIT_NF_ENABLED" = ct_label.nf; "
                       REGBIT_ACL_VERDICT_ALLOW " = 1; next;",
                       lflow_ref);
 
@@ -7855,10 +7860,10 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
          * that's generated from a non-listening UDP port.  */
         const char *ct_in_acl_action =
             REGBIT_ACL_HINT_ALLOW_REL" = 1; "
-            REGBIT_NF_ENABLED" = ct_label.nf_group; "
+            REGBIT_NF_ENABLED" = ct_label.nf; "
             REGBIT_ACL_VERDICT_ALLOW" = 1; ct_commit_nat;";
         const char *ct_out_acl_action =
-            REGBIT_NF_ENABLED" = ct_label.nf_group; "
+            REGBIT_NF_ENABLED" = ct_label.nf; "
             REGBIT_ACL_VERDICT_ALLOW" = 1; ct_commit_nat;";
         ds_clear(&match);
         ds_put_cstr(&match, "!ct.est && ct.rel && !ct.new && "
@@ -7883,12 +7888,12 @@ build_acls(const struct ls_stateful_record *ls_stateful_rec,
         ds_clear(&match);
         const char *pre_lb_persisted_acl_action =
             REGBIT_ACL_HINT_ALLOW_PERSISTED" = 1; "
-            REGBIT_NF_ENABLED" = ct_label.nf_group; "
+            REGBIT_NF_ENABLED" = ct_label.nf; "
             REGBIT_ACL_VERDICT_ALLOW" = 1; next;";
         const char *post_lb_persisted_acl_action =
             REGBIT_ACL_VERDICT_ALLOW" = 1; next;";
         const char *persisted_acl_action =
-            REGBIT_NF_ENABLED" = ct_label.nf_group; "
+            REGBIT_NF_ENABLED" = ct_label.nf; "
             REGBIT_ACL_VERDICT_ALLOW" = 1; next;";
         ds_put_format(&match, "ct.est && ct_mark.allow_established == 1");
         ovn_lflow_add(lflows, od, S_SWITCH_IN_ACL_EVAL, UINT16_MAX - 3,
@@ -8770,8 +8775,8 @@ build_stateful(struct ovn_datapath *od, struct lflow_table *lflows,
                     "ct_mark.obs_collector_id = " REG_OBS_COLLECTOR_ID_EST "; "
                     "ct_label.obs_point_id = " REG_OBS_POINT_ID_EST "; "
                     "ct_label.acl_id = " REG_ACL_ID "; "
-                    "ct_label.nf_group = 0; "
-                    "ct_label.nf_group_id = 0; "
+                    "ct_label.nf = 0; "
+                    "ct_label.nf_id = 0; "
                   "}; next;");
     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
                   REGBIT_CONNTRACK_COMMIT" == 1 && "
@@ -8794,8 +8799,8 @@ build_stateful(struct ovn_datapath *od, struct lflow_table *lflows,
                    "ct_mark.blocked = 0; "
                    "ct_mark.allow_established = " REGBIT_ACL_PERSIST_ID "; "
                    "ct_label.acl_id = " REG_ACL_ID "; "
-                   "ct_label.nf_group = 0; "
-                   "ct_label.nf_group_id = 0; "
+                   "ct_label.nf = 0; "
+                   "ct_label.nf_id = 0; "
                 "}; next;");
     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 100,
                   REGBIT_CONNTRACK_COMMIT" == 1 && "
@@ -8817,8 +8822,8 @@ build_stateful(struct ovn_datapath *od, struct lflow_table *lflows,
                     "ct_mark.blocked = 0; "
                     "ct_mark.allow_established = " REGBIT_ACL_PERSIST_ID "; "
                     "ct_label.acl_id = " REG_ACL_ID "; "
-                    "ct_label.nf_group = 1; "
-                    "ct_label.nf_group_id = " REG_NF_GROUP_ID "; }; next;");
+                    "ct_label.nf = 1; "
+                    "ct_label.nf_id = " REG_NF_ID "; }; next;");
     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 110,
                   REGBIT_CONNTRACK_COMMIT" == 1 && "
                   REGBIT_ACL_LABEL" == 0 && "
@@ -8845,8 +8850,8 @@ build_stateful(struct ovn_datapath *od, struct lflow_table *lflows,
                     "ct_mark.obs_collector_id = " REG_OBS_COLLECTOR_ID_EST "; "
                     "ct_label.obs_point_id = " REG_OBS_POINT_ID_EST "; "
                     "ct_label.acl_id = " REG_ACL_ID "; "
-                    "ct_label.nf_group = 1; "
-                    "ct_label.nf_group_id = " REG_NF_GROUP_ID "; }; next;");
+                    "ct_label.nf = 1; "
+                    "ct_label.nf_id = " REG_NF_ID "; }; next;");
     ovn_lflow_add(lflows, od, S_SWITCH_IN_STATEFUL, 110,
                   REGBIT_CONNTRACK_COMMIT" == 1 && "
                   REGBIT_ACL_LABEL" == 1 && "
@@ -18682,17 +18687,28 @@ static void build_network_function_active(
 static void
 network_function_configure_fail_open_flows(struct lflow_table *lflows,
               const struct ovn_datapath *od, struct lflow_ref *lflow_ref,
-              uint64_t nfg_id)
+              uint64_t nfg_id, bool ingress)
 {
     struct ds match = DS_EMPTY_INITIALIZER;
-    ds_put_format(&match,
-                  REG_NF_GROUP_ID " == %"PRIu8" || "
-                  "(ct.trk && ct_label.nf_group_id == %"PRIu8")",
-                  (uint8_t) nfg_id, (uint8_t) nfg_id);
-    ovn_lflow_add(lflows, od, S_SWITCH_IN_NF, 10,
-        ds_cstr(&match), "next;", lflow_ref);
-    ovn_lflow_add(lflows, od, S_SWITCH_OUT_NF, 10,
-        ds_cstr(&match), "next;", lflow_ref);
+    struct ds action = DS_EMPTY_INITIALIZER;
+
+    /* Pre NF Table (Priority 10):
+     *
+     * When no active network function exists in the network function group,
+     * this flow resets the nf_enabled bit and clears the nf_group_id register
+     * to allow packets to continue processing through the pipeline without
+     * network function redirection (fail-open behavior).
+     */
+    ds_put_format(&match, REGBIT_NF_ENABLED" == 1 && "
+                          REGBIT_NF_ORIG_DIR" == 1 && "
+                          REG_NF_GROUP_ID" == %"PRIu8,
+                  (uint8_t) nfg_id);
+    ds_put_format(&action, REGBIT_NF_ENABLED" = 0; "
+                           REG_NF_ID" = 0; next;");
+    ovn_lflow_add(lflows, od, ingress ? S_SWITCH_IN_PRE_NF
+                                      : S_SWITCH_OUT_PRE_NF,
+                  10, ds_cstr(&match), ds_cstr(&action), lflow_ref);
+    ds_destroy(&action);
     ds_destroy(&match);
 }
 
@@ -18712,7 +18728,7 @@ consider_network_function(struct lflow_table *lflows,
      */
     if (network_function_group_is_fallback_fail_open(nfg)) {
         network_function_configure_fail_open_flows(lflows, od, lflow_ref,
-                                                   nfg->id);
+                                                   nfg->id, ingress);
     }
 
     /* Currently we support only one active port-pair in a group.
@@ -18751,16 +18767,36 @@ consider_network_function(struct lflow_table *lflows,
         reverse_redirect_port = input_port;
     }
 
+    /* Pre NF Table (Priority 99):
+     *
+     * Currently, this stage simply writes the active network function ID into
+     * the nf_id register.
+     *
+     * In the future, this stage will be extended to support network function
+     * load balancing.
+     */
+    ds_put_format(&match, REGBIT_NF_ENABLED" == 1 && "
+                          REGBIT_NF_ORIG_DIR" == 1 && "
+                          REG_NF_GROUP_ID " == %"PRIu8,
+                  (uint8_t) nfg->id);
+    ds_put_format(&action, REG_NF_ID" = %"PRIu8"; next;", (uint8_t) nf->id);
+    ovn_lflow_add(lflows, od, ingress ? S_SWITCH_IN_PRE_NF
+                                      : S_SWITCH_OUT_PRE_NF,
+                  99, ds_cstr(&match), ds_cstr(&action), lflow_ref);
+    ds_clear(&match);
+    ds_clear(&action);
+
     /* Add forward flows for redirection:
      * Flows to handle request packets for new or existing connections.
      *
      * from-lport ACL in_nf priority 99:
      * in_acl_eval has already categorized it and populated nf_enabled,
-     * direction and nfg_id registers. Here this rule sets the outport to the
+     * direction and nfg_id registers. in_pre_nf sets the active network
+     * function id in nf_id register. Here this rule sets the outport to the
      * NF port and does output action to skip the rest of the ingress pipeline.
      *
      * to-lport ACL out_nf priority 99:
-     * out_acl_eval does the setting of nf related registers. Then the
+     * out_acl_eval, and out_pre_nf set the nf related registers. Then the
      * out_nf stage sets the outport to NF port and submits the
      * packet back to ingress pipeline l2_lkup table. The l2_lkup would skip
      * mac based lookup as the NF_EGRESS_LOOPBACK is set.
@@ -18777,8 +18813,8 @@ consider_network_function(struct lflow_table *lflows,
     }
     ds_put_format(&match, REGBIT_NF_ENABLED" == 1 && "
                           REGBIT_NF_ORIG_DIR" == 1 && "
-                          REG_NF_GROUP_ID " == %"PRIu8,
-                  (uint8_t) nfg->id);
+                          REG_NF_ID " == %"PRIu8,
+                  (uint8_t) nf->id);
     ovn_lflow_add(lflows, od, fwd_stage, 99, ds_cstr(&match),
                   ds_cstr(&action), lflow_ref);
     ds_clear(&match);
@@ -18811,8 +18847,8 @@ consider_network_function(struct lflow_table *lflows,
     }
     ds_put_format(&match, REGBIT_NF_ENABLED" == 1 && "
                           REGBIT_NF_ORIG_DIR" == 0 && "
-                          "ct_label.nf_group_id == %"PRIu8,
-                 (uint8_t) nfg->id);
+                          "ct_label.nf_id == %"PRIu8,
+                 (uint8_t) nf->id);
     ovn_lflow_add(lflows, od, rev_stage, 99, ds_cstr(&match), ds_cstr(&action),
                   lflow_ref);
     ds_clear(&match);
@@ -18893,6 +18929,24 @@ build_network_function(const struct ovn_datapath *od,
     ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 100,
                   REGBIT_NF_EGRESS_LOOPBACK" == 1",
                   "output;", lflow_ref);
+
+    /* Ingress and Egress PRE NF Table (Priority 0): Packets are forwarded to
+     * next table by default. */
+     ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_NF, 0, "1", "next;", lflow_ref);
+     ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_NF, 0, "1", "next;",
+                   lflow_ref);
+
+    /* Ingress and Egress PRE NF Table (Priority 1): ACL stage determined these
+     * packets should be redirected, but there is no active NF in NFG.
+     * Reset the nf_id register to 0. This will drop the packet by the
+     * default drop rule in the subsequent NF table.
+     */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_NF, 1,
+                  REGBIT_NF_ENABLED" == 1 && " REGBIT_NF_ORIG_DIR" == 1",
+                  REG_NF_ID" = 0; next;", lflow_ref);
+    ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_NF, 1,
+                  REGBIT_NF_ENABLED" == 1 && " REGBIT_NF_ORIG_DIR" == 1",
+                  REG_NF_ID" = 0; next;", lflow_ref);
 
     /* Ingress and Egress NF Table (Priority 100): ACL stage determined these
      * packets should be redirected, but these are multicast/broadcast

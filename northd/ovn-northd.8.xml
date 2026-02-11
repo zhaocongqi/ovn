@@ -917,7 +917,7 @@
 
       <li>
         The priority-65532 flows that allow response and related traffic, also
-        set <code>reg8[21] = ct_label.nf_group</code>, which gets checked in
+        set <code>reg8[21] = ct_label.nf</code>, which gets checked in
         the <code>Network Function</code> table.
       </li>
 
@@ -1487,7 +1487,79 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 23: Stateful</h3>
+    <h3>Ingress Table 23: Pre Network Function</h3>
+    <p>
+      This stage selects the active network function from a
+      <code>Network_Function_Group</code> based on the network function group
+      ID set by the ACL eval stage earlier. This stage is applicable for
+      request packets of <code>from-lport</code> ACLs
+      (<code>reg8[22] == 1</code>). Response packets for
+      <code>to-lport</code> ACLs bypass this stage and use
+      <code>ct_label.nf_id</code> directly in the Network Function table.
+    </p>
+
+    <p>
+      A network function group can contain one or more network functions.
+      Health monitoring is performed by sending datapath probes as per
+      parameters defined in <code>Network_Function_Health_Check</code>. This
+      stage selects one of the healthy network functions. If none are healthy,
+      the behavior follows the <code>fallback</code> column configured in the
+      <code>Network_Function_Group</code> table. If health monitoring is not
+      configured, any one from the group is selected.
+    </p>
+
+    <p>
+      When a request packet matches a <code>from-lport</code> ACL with
+      <code>network_function_group</code> set, the ACL eval stage sets
+      <code>reg8[21] = 1</code> (NF enabled), <code>reg8[22] = 1</code>
+      (request direction), and <code>reg0[22..29]</code> to the network
+      function group ID. This table then selects the active network function
+      from the group and overwrites <code>reg0[22..29]</code> with the
+      specific <code>id</code> of a <code>Network_Function</code> table entry.
+      The subsequent Network Function table uses this NF ID to redirect packets
+      to the appropriate network function port. In the future, this stage will
+      be extended to support network function load balancing.
+    </p>
+
+    <ul>
+      <li>
+        For each network_function_group <var>id</var> with an active network
+        function, a priority-99 flow matches <code>reg8[21] == 1 &amp;&amp;
+        reg8[22] == 1 &amp;&amp; reg0[22..29] == <var>id</var></code> and
+        sets <code>reg0[22..29] = <var>nf_id</var>; next;</code> where
+        <var>nf_id</var> is the ID of the active network function. This
+        prepares request packets that matched a <code>from-lport</code> ACL
+        with network_function_group for redirection in the subsequent Network
+        Function table.
+      </li>
+
+      <li>
+        For each network function group with <var>id</var> that has
+        <code>fallback</code> set to <code>fail-open</code>, a priority-10 flow
+        matches <code>reg8[21] == 1 &amp;&amp; reg8[22] == 1 &amp;&amp;
+        reg0[22..29] == <var>id</var></code> and sets <code>reg8[21] = 0;
+        reg0[22..29] = 0; next;</code>. This clears both the NF enabled bit and
+        the NF group ID, allowing packets to continue processing through the
+        pipeline without network function redirection when no active network
+        function is available (fail-open behavior).
+      </li>
+
+      <li>
+        A priority-1 flow matches <code>reg8[21] == 1 &amp;&amp; reg8[22] == 1
+        </code> and sets <code>reg0[22..29] = 0; next;</code>. This is a
+        catch-all flow for network function groups with <code>fallback</code>
+        set to <code>fail-close</code> (or default) when no active network
+        function is available. It clears only the NF group ID, leaving the NF
+        enabled bit set. These packets will be dropped by the priority-1 drop
+        rule in the subsequent Network Function table (fail-close behavior).
+      </li>
+
+      <li>
+        A priority-0 flow that simply moves traffic to the next table.
+      </li>
+    </ul>
+
+    <h3>Ingress Table 24: Stateful</h3>
 
     <ul>
       <li>
@@ -1512,8 +1584,8 @@
         action, but otherwise identical to the priority 100 flow.
         Match: <code>reg8[21] == 1</code> (packet matched an ACL with
         <code>network_function_group</code> set)
-        Action: <code>ct_label.nf_group = 1;
-        ct_label.nf_group_id = reg0[22..29];</code>
+        Action: <code>ct_label.nf = 1;
+        ct_label.nf_id = reg0[22..29];</code>
         This is to commit the network_function information in conntrack so that
         the response and related packets can be redirected to it as well.
       </li>
@@ -1525,29 +1597,36 @@
 
     <h3>Ingress Table 25: Network Function</h3>
     <p>
-      This table implements the packet redirection rules for network function.
-      If <code>network_function_group</code> column in <code>from-lport</code>
-      ACL is set to <var>id</var> of a <code>Network_Function_Group</code>
-      entity, the ingress ACL eval stage sets a set of registers as described
-      before. Those registers get used here. In case of <code>to-lport</code>
-      ACLs, the request packet is redirected in egress pipeline as described
-      later. The response is handled here using the network_function_group id
-      committed in ct_label during request processing.
+      This table implements packet redirection to network functions. When a
+      packet matches an ACL with <code>network_function_group</code> column
+      set to the <code>id</code> of a <code>Network_Function_Group</code>
+      table entry, the ACL eval stage sets <code>reg8[21] = 1</code> (NF
+      enabled), <code>reg8[22] = 1</code> (request direction), and
+      <code>reg0[22..29]</code> to the network function group ID. The Pre
+      Network Function stage then selects the active network function from the
+      group and overwrites <code>reg0[22..29]</code> with the specific
+      <code>id</code> of a <code>Network_Function</code> table entry. This
+      table uses that NF ID to redirect packets to the appropriate network
+      function port.
     </p>
 
     <p>
-      There can be one or more network_functions in a group. Health monitoring
-      is done by sending datapath probes as par parameters defined in
-      <code>Network_Function_Health_Check</code>. One of the healthy
-      network_functions is selected for each network_function_group.
-      If none are healthy, or if health monitoring is not configured, any one
-      from the group is selected. The rules in this table redirects request
-      packets for <code>from-lport</code> ACLs and response packets for
-      <code>to-lport</code> ACLs to the selected network_function's
-      <code>inport</code>. If the network_function ports are not present on
-      this logical switch, their child ports if any, are used. In the below
-      statements when network function ports are referred it implies the parent
-      or child ports as applicable to this logical switch.
+      This table handles request packets for <code>from-lport</code> ACLs
+      and response packets for <code>to-lport</code> ACLs. For
+      <code>from-lport</code> ACLs, request packets are redirected to the
+      network function's <code>inport</code>, and corresponding
+      response/related packets are handled in the egress pipeline. For
+      <code>to-lport</code> ACLs, request packets are handled in the egress
+      pipeline, but corresponding response/related packets for those flows
+      are redirected here using the network function ID stored in
+      <code>ct_label.nf_id</code> during request processing.
+    </p>
+
+    <p>
+      If the network function ports are not present on this logical switch,
+      their child ports (if any) are used. In the statements below, network
+      function ports refer to either the parent or child ports as applicable to
+      this logical switch.
     </p>
 
     <ul>
@@ -1564,22 +1643,25 @@
       </li>
 
       <li>
-        For each network_function_group <var>id</var>, a priority-99 flow
-        matches <code>reg8[21] == 1 &amp;&amp; reg8[22] == 1 &amp;&amp;
+        For each active network function with <var>id</var> that is referenced
+        in a network function group, a priority-99 flow matches
+        <code>reg8[21] == 1 &amp;&amp; reg8[22] == 1 &amp;&amp;
         reg0[22..29] == <var>id</var></code> and sets
         <code>outport=<var>P</var>; output;</code> where <var>P</var> is the
-        <code>inport</code> of the selected network function. This ensures
-        redirection of request packets for flows matching
-        <code>from-lport</code> ACLs with network_function.
+        <code>inport</code> of that network function. This redirects request
+        packets for flows matching <code>from-lport</code> ACLs with
+        network_function_group to the specific network function selected by
+        the Pre Network Function stage.
       </li>
 
       <li>
-        For each network_function_group <var>id</var>, a priority-99 rule
-        matches <code>reg8[21] == 1 &amp;&amp; reg8[22] == 0 &amp;&amp;
-        ct_label.nf_group_id == <var>id</var></code> and takes
-        identical action as above. This ensures redirection of response and
-        related packets matching <code>to-lport</code> ACLs with
-        network_function.
+        For each active network function with <var>id</var> that is referenced
+        in a network function group, a priority-99 rule matches
+        <code>reg8[21] == 1 &amp;&amp; reg8[22] == 0 &amp;&amp;
+        ct_label.nf_id == <var>id</var></code> and takes identical action as
+        above. This redirects response and related packets for
+        <code>to-lport</code> ACLs to the same network function that handled
+        the request, using the NF ID stored in the connection tracking label.
       </li>
 
       <li>
@@ -1590,12 +1672,12 @@
 
       <li>
         One priority-100 rule to skip redirection of multicast packets that hit
-        a network_function ACL. Match on <code>8[21] == 1 &amp;&amp;
+        a network_function ACL. Match on <code>reg8[21] == 1 &amp;&amp;
         eth.mcast</code> and action is to advance to the next table.
       </li>
 
       <li>
-        One priority-1 rule that checks <code>reg8[[21]] == 1</code>, and drops
+        One priority-1 rule that checks <code>reg8[21] == 1</code>, and drops
         such packets. This is to address the case where a packet hit an ACL
         with network function but the network function does not have ports or
         child ports on this logical switch.
@@ -1607,7 +1689,7 @@
       </li>
     </ul>
 
-    <h3>Ingress Table 25: ARP/ND responder</h3>
+    <h3>Ingress Table 26: ARP/ND responder</h3>
 
     <p>
       This table implements ARP/ND responder in a logical switch for known
@@ -1942,7 +2024,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 26: DHCP option processing</h3>
+    <h3>Ingress Table 27: DHCP option processing</h3>
 
     <p>
       This table adds the DHCPv4 options to a DHCPv4 packet from the
@@ -2003,7 +2085,7 @@ next;
       </li>
     </ul>
 
-    <h3>Ingress Table 27: DHCP responses</h3>
+    <h3>Ingress Table 28: DHCP responses</h3>
 
     <p>
       This table implements DHCP responder for the DHCP replies generated by
@@ -2084,7 +2166,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 28 DNS Lookup</h3>
+    <h3>Ingress Table 29 DNS Lookup</h3>
 
     <p>
       This table looks up and resolves the DNS names to the corresponding
@@ -2113,7 +2195,7 @@ reg0[4] = dns_lookup(); next;
       </li>
     </ul>
 
-    <h3>Ingress Table 29 DNS Responses</h3>
+    <h3>Ingress Table 30 DNS Responses</h3>
 
     <p>
       This table implements DNS responder for the DNS replies generated by
@@ -2148,7 +2230,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress table 30 External ports</h3>
+    <h3>Ingress table 31 External ports</h3>
 
     <p>
       Traffic from the <code>external</code> logical ports enter the ingress
@@ -2191,7 +2273,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 31 Destination Lookup</h3>
+    <h3>Ingress Table 32 Destination Lookup</h3>
 
     <p>
       This table implements switching behavior.  It contains these logical
@@ -2425,7 +2507,7 @@ output;
       </li>
     </ul>
 
-    <h3>Ingress Table 32 Destination unknown</h3>
+    <h3>Ingress Table 33 Destination unknown</h3>
 
     <p>
       This table handles the packets whose destination was not found or
@@ -2720,7 +2802,81 @@ output;
       they apply to <code>to-lport</code> QoS rules.
     </p>
 
-    <h3>Egress Table 11: Stateful</h3>
+    <h3>Egress Table 11: Pre Network Function</h3>
+
+    <p>
+      This stage selects the active network function from a
+      <code>Network_Function_Group</code> based on the network function group
+      ID set by the ACL eval stage earlier. This stage is applicable for
+      request packets of <code>to-lport</code> ACLs
+      (<code>reg8[22] == 1</code>). Response packets for
+      <code>from-lport</code> ACLs bypass this stage and use
+      <code>ct_label.nf_id</code> directly in the Network Function table.
+    </p>
+
+    <p>
+      A network function group can contain one or more network functions.
+      Health monitoring is performed by sending datapath probes as per
+      parameters defined in <code>Network_Function_Health_Check</code>. This
+      stage selects one of the healthy network functions. If none are healthy,
+      the behavior follows the <code>fallback</code> column configured in the
+      <code>Network_Function_Group</code> table. If health monitoring is not
+      configured, any one from the group is selected.
+    </p>
+
+    <p>
+      When a request packet matches a <code>to-lport</code> ACL with
+      <code>network_function_group</code> set, the ACL eval stage sets
+      <code>reg8[21] = 1</code> (NF enabled), <code>reg8[22] = 1</code>
+      (request direction), and <code>reg0[22..29]</code> to the network
+      function group ID. This table then selects the active network function
+      from the group and overwrites <code>reg0[22..29]</code> with the
+      specific <code>id</code> of a <code>Network_Function</code> table entry.
+      The subsequent Network Function table uses this NF ID to redirect packets
+      to the appropriate network function port. In the future, this stage will
+      be extended to support network function load balancing.
+    </p>
+
+    <ul>
+      <li>
+        For each network function group with <var>id</var> that has an active
+        network function, a priority-99 flow matches <code>reg8[21] == 1
+        &amp;&amp; reg8[22] == 1 &amp;&amp; reg0[22..29] == <var>id</var></code>
+        and sets <code>reg0[22..29] = <var>nf_id</var>; next;</code> where
+        <var>nf_id</var> is the <code>id</code> of the active
+        <code>Network_Function</code> selected from the group. This prepares
+        request packets that matched a <code>to-lport</code> ACL with
+        network_function_group for redirection in the subsequent Network
+        Function table.
+      </li>
+
+      <li>
+        For each network function group with <var>id</var> that has
+        <code>fallback</code> set to <code>fail-open</code>, a priority-10 flow
+        matches <code>reg8[21] == 1 &amp;&amp; reg8[22] == 1 &amp;&amp;
+        reg0[22..29] == <var>id</var></code> and sets <code>reg8[21] = 0;
+        reg0[22..29] = 0; next;</code>. This clears both the NF enabled bit and
+        the NF group ID, allowing packets to continue processing through the
+        pipeline without network function redirection when no active network
+        function is available (fail-open behavior).
+      </li>
+
+      <li>
+        A priority-1 flow matches <code>reg8[21] == 1 &amp;&amp; reg8[22] == 1
+        </code> and sets <code>reg0[22..29] = 0; next;</code>. This is a
+        catch-all flow for network function groups with <code>fallback</code>
+        set to <code>fail-close</code> (or default) when no active network
+        function is available. It clears only the NF group ID, leaving the NF
+        enabled bit set. These packets will be dropped by the priority-1 drop
+        rule in the subsequent Network Function table (fail-close behavior).
+      </li>
+
+      <li>
+        A priority-0 flow that simply moves traffic to the next table.
+      </li>
+    </ul>
+
+    <h3>Egress Table 12: Stateful</h3>
 
     <p>
       This is similar to ingress table <code>Stateful</code> except that
@@ -2746,15 +2902,18 @@ output;
       </li>
     </ul>
 
-    <h3>Egress Table 12: Network Function</h3>
+    <h3>Egress Table 13: Network Function</h3>
 
     <p>
-      This table is similar to ingress table <code>Network Function</code>
-      except for the role of <code>from-lport</code> and <code>to-lport</code>
-      ACLs reversed, and the packet redirection happening to the selected
-      network function's <code>outport</code> rather than to its
-      <code>inport</code>. Another difference is that the action injects the
-      packets back into the ingress pipeline.
+      This table handles request packets for <code>to-lport</code> ACLs
+      and response packets for <code>from-lport</code> ACLs. For
+      <code>to-lport</code> ACLs, request packets are redirected to the
+      network function's <code>outport</code>, and corresponding
+      response/related packets are handled in the ingress pipeline. For
+      <code>from-lport</code> ACLs, request packets are handled in the
+      ingress pipeline, but corresponding response/related packets for those
+      flows are redirected here using the network function ID stored in
+      <code>ct_label.nf_id</code> during request processing.
     </p>
 
     <ul>
@@ -2765,25 +2924,29 @@ output;
       </li>
 
       <li>
-        For each network_function_group <var>id</var>, a priority-99 flow
-        matches <code>reg8[21] == 1 &amp;&amp; reg8[22] == 1 &amp;&amp;
-        reg0[22..29] == <var>id</var></code> and sets <code>outport=<var>P</var>;
-        reg8[23] = 1; next(pipeline=ingress, table=<var>T</var>)</code> where
-        <var>P</var> is the <code>outport</code> of the selected
-        network_function and <var>T</var> is the ingress table
-        <code>Destination Lookup</code>. This ensures redirection of request
-        packets matching <code>to-lport</code> ACL with network_function. The
-        packets are injected back to the ingress pipeline from where they get
-        sent out skipping any further lookup because of <code>reg8[23]</code>.
+        For each active network function with <var>id</var> that is
+        referenced in a network function group, a priority-99 flow matches
+        <code>reg8[21] == 1 &amp;&amp; reg8[22] == 1 &amp;&amp;
+        reg0[22..29] == <var>id</var></code> and sets
+        <code>outport=<var>P</var>; reg8[23] = 1; next(pipeline=ingress,
+        table=<var>T</var>)</code> where <var>P</var> is the
+        <code>outport</code> of that network function and <var>T</var> is
+        the ingress table <code>Destination Lookup</code>. This redirects
+        request packets matching <code>to-lport</code> ACLs with
+        network_function_group to the specific network function selected by
+        the Pre Network Function stage. The packets are injected back to the
+        ingress pipeline from where they get sent out, skipping any further
+        lookup because of <code>reg8[23]</code>.
       </li>
 
       <li>
-        For each network_function_group <var>id</var>, a priority-99 rule
-        matches <code>reg8[21] == 1 &amp;&amp; reg8[22] == 0 &amp;&amp;
-        ct_label.nf_group_id == <var>id</var></code> and takes
-        identical action as above. This ensures redirection if response and
-        related packets for flows matching <code>from-lport</code> ACLs with
-        network_function.
+        For each active network function with <var>id</var> that is referenced
+        in a network function group, a priority-99 rule matches
+        <code>reg8[21] == 1 &amp;&amp; reg8[22] == 0 &amp;&amp;
+        ct_label.nf_id == <var>id</var></code> and takes identical action as
+        above. This redirects response and related packets for
+        <code>from-lport</code> ACLs to the same network function that handled
+        the request, using the NF ID stored in the connection tracking label.
       </li>
 
       <li>
@@ -2806,7 +2969,7 @@ output;
       </li>
     </ul>
 
-    <h3>Egress Table 13: Egress Port Security - check</h3>
+    <h3>Egress Table 14: Egress Port Security - check</h3>
 
     <p>
       This is similar to the port security logic in table
@@ -2835,7 +2998,7 @@ output;
       </li>
     </ul>
 
-    <h3>Egress Table 14: Egress Port Security - Apply</h3>
+    <h3>Egress Table 15: Egress Port Security - Apply</h3>
 
     <p>
       This is similar to the ingress port security logic in ingress table

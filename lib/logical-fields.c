@@ -220,17 +220,17 @@ ovn_init_symtab(struct shash *symtab)
                                     "ct_label[0..95]", WR_CT_COMMIT);
     expr_symtab_add_subfield_scoped(symtab, "ct_label.acl_id", NULL,
                                     "ct_label[80..95]", WR_CT_COMMIT);
-    expr_symtab_add_subfield_scoped(symtab, "ct_label.nf_group",
+    expr_symtab_add_subfield_scoped(symtab, "ct_label.nf",
                                     NULL, "ct_label["
-                                        OVN_CT_STR(OVN_CT_NF_GROUP_BIT)
+                                        OVN_CT_STR(OVN_CT_NF_BIT)
                                     "]",
                                     WR_CT_COMMIT);
     expr_symtab_add_subfield_scoped(symtab,
-                                    "ct_label.nf_group_id", NULL,
+                                    "ct_label.nf_id", NULL,
                                     "ct_label["
-                                        OVN_CT_STR(OVN_CT_NF_GROUP_ID_1ST_BIT)
+                                        OVN_CT_STR(OVN_CT_NF_ID_1ST_BIT)
                                         ".."
-                                        OVN_CT_STR(OVN_CT_NF_GROUP_ID_END_BIT)
+                                        OVN_CT_STR(OVN_CT_NF_ID_END_BIT)
                                     "]",
                                     WR_CT_COMMIT);
     expr_symtab_add_subfield_scoped(symtab, "ct_label.tun_if", NULL,
