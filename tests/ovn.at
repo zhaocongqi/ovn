@@ -45497,3 +45497,158 @@ OVN_CLEANUP([hv1
 /Invalid VRRPv3 MAC/d])
 AT_CLEANUP
 ])
+
+# NOTE: This test case runs two ovn-controllers inside the same sandbox (hv1).
+# Each controller uses a unique chassis name - hv1 and hv2 - and manage
+# different bridges with different ports. This is why all 'as' commands below
+# are executed from the same - hv1 - sandbox, regardless of whether they
+# logically belong to ports of chassis named hv1 or hv2.
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([multiple controllers on the same host non-overlapping CT zone ranges])
+ovn_start
+net_add n1
+
+sim_add hv1
+as hv1
+ovs-vsctl add-br br-phys-1
+ovn_attach n1 br-phys-1 192.168.0.1 24
+
+ovs-vsctl add-br br-phys-2
+
+ovn-appctl vlog/set vconn:dbg
+
+check ovs-vsctl \
+    -- set Open_vSwitch . external-ids:ct-zone-range-hv1=100-199 \
+    -- set Open_vSwitch . external-ids:ct-zone-range-hv2=300-399
+
+check ovn-nbctl ls-add ls
+
+check ovn-nbctl lsp-add ls lsp1
+check ovn-nbctl lsp-add ls lsp2
+
+check ovn-nbctl lsp-set-addresses lsp1 "00:00:00:00:00:10 10.0.0.10" \
+    -- lsp-set-options lsp1 requested-chassis=hv1
+check ovn-nbctl lsp-set-addresses lsp2 "00:00:00:00:00:20 10.0.0.20" \
+    -- lsp-set-options lsp2 requested-chassis=hv2
+
+check ovn-nbctl lr-add lr1 -- set Logical_Router lr1 options:chassis=hv1
+check ovn-nbctl lrp-add lr1 lr1-ls 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port ls ls-lr1 lr1-ls
+
+check ovn-nbctl lr-add lr2 -- set Logical_Router lr2 options:chassis=hv2
+check ovn-nbctl lrp-add lr2 lr2-ls 00:00:00:00:00:01 10.0.0.1/24
+check ovn-nbctl lsp-add-router-port ls ls-lr2 lr2-ls
+
+check ovs-vsctl -- add-port br-int vif1 -- \
+    set interface vif1 external-ids:iface-id=lsp1
+
+wait_for_ports_up lsp1
+check ovn-nbctl --wait=hv sync
+
+# The file is read once at startup so it's safe to write it
+# here after the first ovn-controller has started.
+echo hv2 > ${OVN_SYSCONFDIR}/system-id-override
+
+# For some reason SSL/TLS ovsdb configuration overrides CLI, so
+# delete ssl config from ovsdb to give CLI arguments priority.
+check ovs-vsctl del-ssl
+
+start_virtual_controller n1 br-phys-2 br-int-2 192.168.2.1 24 geneve hv2 \
+    --pidfile=${OVS_RUNDIR}/ovn-controller-2.pid \
+    --log-file=${OVS_RUNDIR}/ovn-controller-2.log \
+    -p $PKIDIR/testpki-hv2-privkey.pem \
+    -c $PKIDIR/testpki-hv2-cert.pem \
+    -C $PKIDIR/testpki-cacert.pem \
+    -vvconn:dbg
+pidfile="$OVS_RUNDIR"/ovn-controller-2.pid
+on_exit "test -e \"$pidfile\" && kill \`cat \"$pidfile\"\`"
+
+check ovs-vsctl -- add-port br-int-2 vif2 -- \
+    set interface vif2 external-ids:iface-id=lsp2
+
+wait_for_ports_up lsp2
+check ovn-nbctl --wait=hv sync
+OVN_POPULATE_ARP
+
+check_zone_allocation() {
+    local ctl=$1
+    local prefix=$2
+
+    AT_CHECK_UNQUOTED([ovn-appctl -t $ctl ct-zone-list | cut -d ' ' -f2 | grep -v "$prefix[[0-9]][[0-9]]"], [1])
+}
+
+check_zone_flush() {
+    local file=$1
+    local prefix=$2
+
+    AT_CHECK_UNQUOTED([grep NXT_CT_FLUSH_ZONE ${OVS_RUNDIR}/$file | grep -v "zone_id=$prefix[[0-9]][[0-9]]"], [1])
+}
+
+hv1_ctl="${OVS_RUNDIR}/ovn-controller.$(cat ${OVS_RUNDIR}/ovn-controller.pid).ctl"
+hv2_ctl="${OVS_RUNDIR}/ovn-controller.$(cat ${OVS_RUNDIR}/ovn-controller-2.pid).ctl"
+
+check_zone_allocation $hv1_ctl 1
+check_zone_flush ovn-controller.log 1
+check_zone_allocation $hv2_ctl 3
+check_zone_flush ovn-controller-2.log 3
+
+# Re-bind both LSPs.
+check ovs-vsctl set interface vif1 external-ids:iface-id=lsp2 \
+    -- set interface vif2 external-ids:iface-id=lsp1
+check ovn-nbctl lsp-set-options lsp1 requested-chassis=hv2 \
+    -- lsp-set-options lsp2 requested-chassis=hv1
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+check_zone_allocation $hv1_ctl 1
+check_zone_flush ovn-controller.log 1
+check_zone_allocation $hv2_ctl 3
+check_zone_flush ovn-controller-2.log 3
+
+# Swap GW routers.
+check ovn-nbctl set Logical_Router lr1 options:chassis=hv2 \
+    -- set Logical_Router lr2 options:chassis=hv1
+check ovn-nbctl --wait=hv sync
+
+# Datapaths become non-local to ovn-controllers when runtime-data is
+# recomputed.  Trigger that.
+check ovn-appctl -t $hv1_ctl inc-engine/recompute
+check ovn-appctl -t $hv2_ctl inc-engine/recompute
+
+check_zone_allocation $hv1_ctl 1
+check_zone_flush ovn-controller.log 1
+check_zone_allocation $hv2_ctl 3
+check_zone_flush ovn-controller-2.log 3
+
+# Remove LSPs.
+check ovn-nbctl --wait=hv lsp-del lsp1
+
+check_zone_allocation $hv1_ctl 1
+check_zone_flush ovn-controller.log 1
+check_zone_allocation $hv2_ctl 3
+check_zone_flush ovn-controller-2.log 3
+
+check ovn-nbctl --wait=hv lsp-del lsp2
+check_zone_allocation $hv1_ctl 1
+check_zone_flush ovn-controller.log 1
+check_zone_allocation $hv2_ctl 3
+check_zone_flush ovn-controller-2.log 3
+
+# Make the routers distributed again.
+check ovn-nbctl remove Logical_Router lr1 options chassis
+check ovn-nbctl remove Logical_Router lr2 options chassis
+check ovn-nbctl --wait=hv sync
+
+# Datapaths become non-local to ovn-controllers when runtime-data is
+# recomputed.  Trigger that.
+check ovn-appctl -t $hv1_ctl inc-engine/recompute
+check ovn-appctl -t $hv2_ctl inc-engine/recompute
+
+check_zone_allocation $hv1_ctl 1
+check_zone_flush ovn-controller.log 1
+check_zone_allocation $hv2_ctl 3
+check_zone_flush ovn-controller-2.log 3
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
