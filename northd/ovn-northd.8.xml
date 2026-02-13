@@ -2421,8 +2421,14 @@ output;
       </li>
 
       <li>
+        A priority-71 flow that outputs all ARP or IP packets with an Ethernet
+        broadcast or multicast <code>eth.dst</code> to the
+        <code>MC_FLOOD</code> multicast group.
+      </li>
+
+      <li>
         A priority-70 flow that outputs all packets with an Ethernet broadcast
-        or multicast <code>eth.dst</code> to the <code>MC_FLOOD</code>
+        or multicast <code>eth.dst</code> to the <code>MC_FLOOD_L2</code>
         multicast group.
       </li>
 

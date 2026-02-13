@@ -10775,8 +10775,15 @@ build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
                       lflow_ref);
     }
 
-    ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 70, "eth.mcast",
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 71,
+                  "eth.mcast && (arp || ip)",
                   "outport = \""MC_FLOOD"\"; output;", lflow_ref);
+
+    /* Non-{arp,ip} L2 multicast traffic should not be sent to router
+     * ports since these packets will be discarded in the router pipeline.
+     */
+    ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 70, "eth.mcast",
+                  "outport = \""MC_FLOOD_L2"\"; output;", lflow_ref);
 }
 
 /* Ingress table 30: destination lookup, multicast handling (priority 80). */

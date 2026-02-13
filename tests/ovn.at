@@ -45652,3 +45652,51 @@ check_zone_flush ovn-controller-2.log 3
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([Drop unknown eth type on router ports])
+AT_SKIP_IF([test $HAVE_SCAPY = no])
+ovn_start
+
+net_add n1
+
+sim_add hv1
+as hv1
+check ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+check ovs-vsctl -- add-port br-int hv1-vif1 -- \
+    set interface hv1-vif1 external-ids:iface-id=sw0-p1 \
+    options:tx_pcap=hv1/vif1-tx.pcap \
+    options:rxq_pcap=hv1/vif1-rx.pcap
+check ovs-vsctl -- add-port br-int hv1-vif2 -- \
+    set interface hv1-vif2 external-ids:iface-id=sw0-p2 \
+    options:tx_pcap=hv1/vif2-tx.pcap \
+    options:rxq_pcap=hv1/vif2-rx.pcap
+
+check ovn-nbctl ls-add sw0
+check ovn-nbctl lsp-add sw0 sw0-p1
+check ovn-nbctl lsp-set-addresses sw0-p1 "50:54:10:00:00:01 10.0.0.1"
+check ovn-nbctl lsp-add sw0 sw0-p2
+check ovn-nbctl lsp-set-addresses sw0-p2 "50:54:20:00:00:01 10.0.0.2"
+
+check ovn-nbctl lr-add lr0
+check ovn-nbctl lrp-add lr0 lr0-sw0 00:00:00:00:ff:01 10.0.0.254/24
+check ovn-nbctl lsp-add-router-port sw0 sw0-lr0 lr0-sw0
+
+# Create an ACL to log traffic on the router port.
+check ovn-nbctl --log --name='eth-unknown' acl-add sw0 to-lport 1000 'outport == "sw0-lr0" && eth.type == 0x5ff' allow
+
+OVN_POPULATE_ARP
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+packet=$(fmt_pkt "Ether(dst='ff:ff:ff:ff:ff:ff', src='50:54:10:00:00:01', type=0x5ff)")
+echo $packet > expected
+check as hv1 ovs-appctl netdev-dummy/receive hv1-vif1 $packet
+OVN_CHECK_PACKETS([hv1/vif2-tx.pcap], [expected])
+
+AT_CHECK([grep -q 'name="eth-unknown"' hv1/ovn-controller.log], [1])
+
+OVN_CLEANUP([hv1])
+AT_CLEANUP
+])
