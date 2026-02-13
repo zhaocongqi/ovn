@@ -12899,6 +12899,7 @@ build_distr_lrouter_nat_flows_for_lb(struct lrouter_nat_lb_flows_ctx *ctx,
      * the undnat stage.
      */
     ds_put_format(ctx->undnat_match, ") && outport == %s", dgp->json_key);
+    ds_clear(ctx->gw_redir_action);
     ds_put_format(ctx->gw_redir_action,
                   "outport = %s; next;", gw_outport);
 
