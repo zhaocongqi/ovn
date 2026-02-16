@@ -69,7 +69,6 @@ jobs:
 
   e2e:
     name: e2e
-    if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 220
     strategy:
