@@ -19810,3 +19810,93 @@ AT_CHECK([grep "ls1-to-spine" ls1flows | ovn_strip_lflows | sort], [0], [dnl
 
 OVN_CLEANUP_NORTHD
 AT_CLEANUP
+
+AT_SETUP([Logical Switch Port Health Check - lflow/service monitor synchronization])
+ovn_start
+
+check ovn-nbctl ls-add ls1
+check ovn-nbctl lsp-add ls1 lport1 -- \
+    lsp-set-addresses lport1 "f0:00:0f:01:02:04 192.168.0.10" "f0:00:0f:01:02:06 192.168.0.11"
+
+check ovn-nbctl set NB_Global . options:svc_monitor_mac="11:11:11:11:11:11"
+
+# Create service monitor for all lsp addresses.
+check ovn-nbctl lsp-hc-add lport1 icmp 192.168.0.255 192.168.0.10
+check ovn-nbctl lsp-hc-add lport1 icmp 192.168.0.255 192.168.0.11
+check ovn-nbctl --wait=sb sync
+
+# Check lflow and service monitor synchronization
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep 'ls_in_arp_rsp'| grep "priority=110" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_arp_rsp      ), priority=110  , match=(arp.tpa == 192.168.0.255 && arp.op == 1), action=(eth.dst = eth.src; eth.src = 11:11:11:11:11:11; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 11:11:11:11:11:11; arp.tpa = arp.spa; arp.spa = 192.168.0.255; outport = inport; flags.loopback = 1; output;)
+])
+
+check_row_count sb:Service_Monitor 2
+check_column "false false" sb:Service_Monitor ic_learned logical_port=lport1
+check_column "false false" sb:Service_Monitor remote logical_port=lport1
+check_column "192.168.0.10 192.168.0.11" sb:Service_Monitor ip logical_port=lport1
+check_column "icmp icmp" sb:Service_Monitor protocol logical_port=lport1
+check_column "192.168.0.255 192.168.0.255" sb:Service_Monitor src_ip logical_port=lport1
+check_column "0 0" sb:Service_Monitor port logical_port=lport1
+check_column "logical-switch-port logical-switch-port" sb:Service_Monitor type logical_port=lport1
+check_column "11:11:11:11:11:11 11:11:11:11:11:11" sb:Service_Monitor src_mac logical_port=lport1
+
+# Create one more service monitor for all lsp addresses.
+check ovn-nbctl lsp-hc-add lport1 tcp 192.168.0.254 80 192.168.0.10
+check ovn-nbctl lsp-hc-add lport1 tcp 192.168.0.254 80 192.168.0.11
+check ovn-nbctl --wait=sb sync
+
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep 'ls_in_arp_rsp'| grep "priority=110" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_arp_rsp      ), priority=110  , match=(arp.tpa == 192.168.0.254 && arp.op == 1), action=(eth.dst = eth.src; eth.src = 11:11:11:11:11:11; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 11:11:11:11:11:11; arp.tpa = arp.spa; arp.spa = 192.168.0.254; outport = inport; flags.loopback = 1; output;)
+  table=??(ls_in_arp_rsp      ), priority=110  , match=(arp.tpa == 192.168.0.255 && arp.op == 1), action=(eth.dst = eth.src; eth.src = 11:11:11:11:11:11; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 11:11:11:11:11:11; arp.tpa = arp.spa; arp.spa = 192.168.0.255; outport = inport; flags.loopback = 1; output;)
+])
+
+# Check options propogations
+hc_lport1_uuid=$(fetch_column nb:logical_switch_port_health_check _uuid address="192.168.0.10" protocol="tcp")
+
+check ovn-nbctl set logical_switch_port_health_check $hc_lport1_uuid options:interval=3
+check ovn-nbctl set logical_switch_port_health_check $hc_lport1_uuid options:timeout=30
+check ovn-nbctl set logical_switch_port_health_check $hc_lport1_uuid options:success_count=1
+check ovn-nbctl set logical_switch_port_health_check $hc_lport1_uuid options:failure_count=2
+check ovn-nbctl --wait=sb sync
+
+sm_lport1_uuid=$(fetch_column sb:service_monitor _uuid protocol="tcp" ip="192.168.0.10")
+
+AT_CHECK([ovn-sbctl get Service_Monitor $sm_lport1_uuid options:interval],
+[0], ["3"
+])
+AT_CHECK([ovn-sbctl get Service_Monitor $sm_lport1_uuid options:failure_count],
+[0], ["2"
+])
+AT_CHECK([ovn-sbctl get Service_Monitor $sm_lport1_uuid options:success_count],
+[0], ["1"
+])
+AT_CHECK([ovn-sbctl get Service_Monitor $sm_lport1_uuid options:timeout],
+[0], ["30"
+])
+
+check ovn-nbctl --wait=sb lsp-del lport1
+check_row_count sb:Service_Monitor 0
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep 'ls_in_arp_rsp'| grep "priority=110" | ovn_strip_lflows], [0], [dnl])
+
+# Create a port with health checks in one transaction - checking the processing of incremental processing
+check ovn-nbctl --wait=sb lsp-add ls1 lport1 -- \
+    lsp-set-addresses lport1 "f0:00:0f:01:02:04 192.168.0.10" "f0:00:0f:01:02:06 192.168.0.11" -- \
+    lsp-hc-add lport1 icmp 192.168.0.255 192.168.0.10 -- \
+    lsp-hc-add lport1 icmp 192.168.0.255 192.168.0.11
+
+check_row_count sb:Service_Monitor 2
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep 'ls_in_arp_rsp'| grep "priority=110" | ovn_strip_lflows], [0], [dnl
+  table=??(ls_in_arp_rsp      ), priority=110  , match=(arp.tpa == 192.168.0.255 && arp.op == 1), action=(eth.dst = eth.src; eth.src = 11:11:11:11:11:11; arp.op = 2; /* ARP reply */ arp.tha = arp.sha; arp.sha = 11:11:11:11:11:11; arp.tpa = arp.spa; arp.spa = 192.168.0.255; outport = inport; flags.loopback = 1; output;)
+])
+
+# Change the addresses on the switch port - expect records in SBDB to be deleted.
+lport1=$(fetch_column nb:logical_switch_port _uuid  name="lport1")
+check ovn-nbctl --wait=sb clear logical_switch_port $lport1 addresses
+
+check_row_count sb:Service_Monitor 0
+AT_CHECK([ovn-sbctl lflow-list ls1 | grep 'ls_in_arp_rsp'| grep "priority=110" | ovn_strip_lflows], [0], [])
+
+check ovn-nbctl --wait=sb lsp-set-addresses lport1 "f0:00:0f:01:02:04 192.168.0.10" "f0:00:0f:01:02:06 192.168.0.11"
+check_row_count sb:Service_Monitor 2
+
+AT_CLEANUP

@@ -3598,7 +3598,75 @@ build_lb_datapaths(const struct hmap *lbs, const struct hmap *lb_groups,
 }
 
 static void
-build_svcs(
+ovn_lsp_svc_monitors_process_port(struct ovsdb_idl_txn *ovnsb_txn,
+                                  const struct ovn_port *op,
+                                  const char *svc_monitor_mac,
+                                  const struct eth_addr *svc_monitor_mac_ea,
+                                  struct hmap *local_svc_monitors_map,
+                                  struct sset *svc_monitor_lsps)
+{
+    sset_add(svc_monitor_lsps, op->key);
+
+    for (size_t i = 0; i < op->nbsp->n_health_checks; i++) {
+        struct nbrec_logical_switch_port_health_check *lsp_hc =
+            op->nbsp->health_checks[i];
+        struct service_monitor_info *mon_info = NULL;
+
+        /* Check if this address is still on the port */
+        bool lsp_contain_ip =
+            lport_addresses_contains_ip(op->lsp_addrs, op->n_lsp_addrs,
+                                        lsp_hc->address);
+
+        /* Remove outdated records */
+        if (!lsp_contain_ip) {
+            mon_info = get_service_mon(local_svc_monitors_map,
+                                       NULL, lsp_hc->address,
+                                       op->key, lsp_hc->port,
+                                       lsp_hc->protocol);
+            if (mon_info) {
+                sbrec_service_monitor_delete(mon_info->sbrec_mon);
+                hmap_remove(local_svc_monitors_map, &mon_info->hmap_node);
+                free(mon_info);
+            }
+            continue;
+        }
+
+        mon_info = create_or_get_service_mon(ovnsb_txn,
+                                             local_svc_monitors_map,
+                                             NULL, "logical-switch-port",
+                                             lsp_hc->address, op->key, NULL,
+                                             lsp_hc->port, lsp_hc->protocol,
+                                             (op->sb && op->sb->chassis)
+                                             ? op->sb->chassis->name : NULL,
+                                             false);
+
+        mon_info->required = true;
+        set_service_mon_options(mon_info->sbrec_mon, &lsp_hc->options, NULL);
+
+        struct eth_addr ea;
+        if (!mon_info->sbrec_mon->src_mac ||
+            !eth_addr_from_string(mon_info->sbrec_mon->src_mac, &ea) ||
+            !eth_addr_equals(ea, *svc_monitor_mac_ea)) {
+            sbrec_service_monitor_set_src_mac(mon_info->sbrec_mon,
+                                              svc_monitor_mac);
+        }
+
+        if (!mon_info->sbrec_mon->src_ip ||
+            strcmp(mon_info->sbrec_mon->src_ip, lsp_hc->src_ip)) {
+            sbrec_service_monitor_set_src_ip(mon_info->sbrec_mon,
+                                             lsp_hc->src_ip);
+        }
+
+        if ((!op->sb->n_up || !op->sb->up[0]) &&
+            mon_info->sbrec_mon->status &&
+            !strcmp(mon_info->sbrec_mon->status, "online")) {
+            sbrec_service_monitor_set_status(mon_info->sbrec_mon, "offline");
+        }
+    }
+}
+
+static void
+build_svc_monitors_data(
     struct ovsdb_idl_txn *ovnsb_txn,
     struct ovsdb_idl_index *sbrec_service_monitor_by_learned_type,
     const char *svc_monitor_mac,
@@ -3610,7 +3678,8 @@ build_svcs(
     const struct nbrec_network_function_table *nbrec_network_function_table,
     struct sset *svc_monitor_lsps,
     struct hmap *local_svc_monitors_map,
-    struct hmap *ic_learned_svc_monitors_map)
+    struct hmap *ic_learned_svc_monitors_map,
+    struct hmapx *monitored_ports_map)
 {
     const struct sbrec_service_monitor *sbrec_mon;
     struct sbrec_service_monitor *key =
@@ -3658,6 +3727,15 @@ build_svcs(
                               nbrec_nf->outport->name, nbrec_nf->inport->name,
                               &nbrec_nf->health_check->options);
         }
+    }
+
+    struct hmapx_node *hmapx_node;
+    HMAPX_FOR_EACH (hmapx_node, monitored_ports_map) {
+        const struct ovn_port *op = hmapx_node->data;
+        ovn_lsp_svc_monitors_process_port(ovnsb_txn, op, svc_monitor_mac,
+                                          svc_monitor_mac_ea,
+                                          local_svc_monitors_map,
+                                          svc_monitor_lsps);
     }
 
     struct service_monitor_info *mon_info;
@@ -4140,6 +4218,14 @@ ovn_port_allocate_key(struct ovn_port *op)
     return true;
 }
 
+static void
+add_hc_monitored_port(struct ovn_port *op, struct hmapx *monitored_ports_map)
+{
+    if (op->nbsp && op->nbsp->n_health_checks && lsp_is_enabled(op->nbsp)) {
+        hmapx_add(monitored_ports_map, op);
+    }
+}
+
 /* Updates the southbound Port_Binding table so that it contains the logical
  * switch ports specified by the northbound database.
  *
@@ -4156,7 +4242,8 @@ build_ports(struct ovsdb_idl_txn *ovnsb_txn,
     struct ovsdb_idl_index *sbrec_chassis_by_hostname,
     struct ovsdb_idl_index *sbrec_ha_chassis_grp_by_name,
     struct hmap *ls_datapaths, struct hmap *lr_datapaths,
-    struct hmap *ls_ports, struct hmap *lr_ports)
+    struct hmap *ls_ports, struct hmap *lr_ports,
+    struct hmapx *monitored_ports_map)
 {
     struct ovs_list sb_only, nb_only, both;
     /* XXX: Add tag_alloc_table and queue_id_bitmap as part of northd_data
@@ -4231,6 +4318,7 @@ build_ports(struct ovsdb_idl_txn *ovnsb_txn,
                               op, queue_id_bitmap,
                               &active_ha_chassis_grps);
         op->od->is_transit_router |= is_transit_router_port(op);
+        add_hc_monitored_port(op, monitored_ports_map);
         ovs_list_remove(&op->list);
     }
 
@@ -4245,6 +4333,7 @@ build_ports(struct ovsdb_idl_txn *ovnsb_txn,
                               &active_ha_chassis_grps);
         sbrec_port_binding_set_logical_port(op->sb, op->key);
         op->od->is_transit_router |= is_transit_router_port(op);
+        add_hc_monitored_port(op, monitored_ports_map);
         ovs_list_remove(&op->list);
     }
 
@@ -4424,6 +4513,11 @@ lsp_can_be_inc_processed(const struct nbrec_logical_switch_port *nbsp)
         if (!strcmp("lport", nbsp->mirror_rules[i]->type)) {
             return false;
         }
+    }
+
+     /* Attaching health check to port is not supported for now. */
+    if (nbsp->n_health_checks) {
+        return false;
     }
 
     return true;
@@ -4656,6 +4750,16 @@ lsp_handle_mirror_rules_changes(const struct ovn_port *op)
     return true;
 }
 
+static bool
+lsp_handle_health_check_changes(const struct ovn_port *op)
+{
+    /* Changes to health check configuration cannot be incrementally
+     * processed. */
+    return !nbrec_logical_switch_port_is_updated(
+        op->nbsp,
+        NBREC_LOGICAL_SWITCH_PORT_COL_HEALTH_CHECKS);
+}
+
 /* Handles logical switch port changes of a changed logical switch.
  * Returns false, if any logical port can't be incrementally handled.
  */
@@ -4736,6 +4840,10 @@ ls_handle_lsp_changes(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 if (!lsp_handle_mirror_rules_changes(op) ||
                      is_lsp_mirror_target_port(
                          ni->nbrec_mirror_by_type_and_sink, op)) {
+                    /* Fallback to recompute. */
+                    goto fail;
+                }
+                if (!lsp_handle_health_check_changes(op)) {
                     /* Fallback to recompute. */
                     goto fail;
                 }
@@ -15641,6 +15749,39 @@ build_arp_resolve_flows_for_lsp(
     }
 }
 
+static void
+build_arp_nd_lflow_for_lsp_svc_hc(struct ovn_port *op,
+                                  const char *svc_monitor_mac,
+                                  struct lflow_table *lflows,
+                                  struct ds *match,
+                                  struct ds *actions)
+{
+    const struct nbrec_logical_switch_port *nbsp = op->nbsp;
+    for (size_t i = 0; i < nbsp->n_health_checks; i++) {
+        struct nbrec_logical_switch_port_health_check *lsp_hc =
+            nbsp->health_checks[i];
+
+        /* Check if this address is still on the port */
+        if (!lport_addresses_contains_ip(op->lsp_addrs, op->n_lsp_addrs,
+                                         lsp_hc->address)) {
+            continue;
+        }
+
+        ds_clear(match);
+        ds_clear(actions);
+
+        bool is_ipv4 = strchr(lsp_hc->src_ip, '.') ? true : false;
+
+        build_arp_nd_service_monitor_lflow(svc_monitor_mac, lsp_hc->src_ip,
+                                           actions, match, is_ipv4);
+
+        ovn_lflow_add(lflows, op->od, S_SWITCH_IN_ARP_ND_RSP, 110,
+                      ds_cstr(match), ds_cstr(actions),
+                      op->lflow_ref,
+                      WITH_HINT(&op->nbsp->header_));
+    }
+}
+
 #define ICMP4_NEED_FRAG_FORMAT                           \
     "icmp4_error {"                                      \
     "%s"                                                 \
@@ -19193,6 +19334,7 @@ build_lswitch_and_lrouter_iterate_by_lsp(struct ovn_port *op,
                                          const struct shash *meter_groups,
                                          struct ds *match,
                                          struct ds *actions,
+                                         const char *svc_monitor_mac,
                                          struct lflow_table *lflows)
 {
     ovs_assert(op->nbsp);
@@ -19216,6 +19358,8 @@ build_lswitch_and_lrouter_iterate_by_lsp(struct ovn_port *op,
 
     /* Build Logical Router Flows. */
     build_arp_resolve_flows_for_lsp(op, lflows, lr_ports, match, actions);
+    build_arp_nd_lflow_for_lsp_svc_hc(op, svc_monitor_mac, lflows,
+                                      match, actions);
 }
 
 /* Helper function to combine all lflow generation which is iterated by logical
@@ -19323,12 +19467,10 @@ build_lflows_thread(void *arg)
                     if (stop_parallel_processing()) {
                         return NULL;
                     }
-                    build_lswitch_and_lrouter_iterate_by_lsp(op, lsi->ls_ports,
-                                                             lsi->lr_ports,
-                                                             lsi->meter_groups,
-                                                             &lsi->match,
-                                                             &lsi->actions,
-                                                             lsi->lflows);
+                    build_lswitch_and_lrouter_iterate_by_lsp(
+                        op, lsi->ls_ports, lsi->lr_ports, lsi->meter_groups,
+                        &lsi->match, &lsi->actions, lsi->svc_monitor_mac,
+                        lsi->lflows);
                     build_lbnat_lflows_iterate_by_lsp(
                         op, lsi->lr_stateful_table, &lsi->match,
                         &lsi->actions, lsi->lflows);
@@ -19612,6 +19754,7 @@ build_lswitch_and_lrouter_flows(
                                                      lsi.meter_groups,
                                                      &lsi.match,
                                                      &lsi.actions,
+                                                     lsi.svc_monitor_mac,
                                                      lsi.lflows);
             build_lbnat_lflows_iterate_by_lsp(op, lsi.lr_stateful_table,
                                               &lsi.match,
@@ -19869,6 +20012,7 @@ lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
                                                  lflow_input->lr_ports,
                                                  lflow_input->meter_groups,
                                                  &match, &actions,
+                                                 lflow_input->svc_monitor_mac,
                                                  lflows);
         /* Sync the new flows to SB. */
         bool handled = lflow_ref_sync_lflows(
@@ -19926,7 +20070,9 @@ lflow_handle_northd_port_changes(struct ovsdb_idl_txn *ovnsb_txn,
         build_lswitch_and_lrouter_iterate_by_lsp(op, lflow_input->ls_ports,
                                                  lflow_input->lr_ports,
                                                  lflow_input->meter_groups,
-                                                 &match, &actions, lflows);
+                                                 &match, &actions,
+                                                 lflow_input->svc_monitor_mac,
+                                                 lflows);
 
         /* Sync the newly added flows to SB. */
         bool handled = lflow_ref_sync_lflows(
@@ -20629,6 +20775,7 @@ northd_init(struct northd_data *data)
     hmap_init(&data->lb_group_datapaths_map);
     sset_init(&data->svc_monitor_lsps);
     hmap_init(&data->local_svc_monitors_map);
+    hmapx_init(&data->monitored_ports_map);
     init_northd_tracked_data(data);
 }
 
@@ -20714,6 +20861,7 @@ northd_destroy(struct northd_data *data)
                                 &data->ls_ports, &data->lr_ports);
 
     sset_destroy(&data->svc_monitor_lsps);
+    hmapx_destroy(&data->monitored_ports_map);
     destroy_northd_tracked_data(data);
 }
 
@@ -20821,21 +20969,23 @@ ovnnb_db_run(struct northd_input *input_data,
                 input_data->sbrec_chassis_by_hostname,
                 input_data->sbrec_ha_chassis_grp_by_name,
                 &data->ls_datapaths.datapaths, &data->lr_datapaths.datapaths,
-                &data->ls_ports, &data->lr_ports);
+                &data->ls_ports, &data->lr_ports,
+                &data->monitored_ports_map);
     build_lb_port_related_data(&data->lr_datapaths, &data->ls_datapaths,
                                &data->lb_datapaths_map,
                                &data->lb_group_datapaths_map);
-    build_svcs(ovnsb_txn,
-               input_data->sbrec_service_monitor_by_learned_type,
-               input_data->svc_monitor_mac,
-               &input_data->svc_monitor_mac_ea,
-               input_data->svc_monitor_mac_dst,
-               input_data->svc_monitor_ip,
-               input_data->svc_monitor_ip_dst,
-               &data->ls_ports, &data->lb_datapaths_map,
-               input_data->nbrec_network_function_table,
-               &data->svc_monitor_lsps, &data->local_svc_monitors_map,
-               input_data->ic_learned_svc_monitors_map);
+    build_svc_monitors_data(ovnsb_txn,
+        input_data->sbrec_service_monitor_by_learned_type,
+        input_data->svc_monitor_mac,
+        &input_data->svc_monitor_mac_ea,
+        input_data->svc_monitor_mac_dst,
+        input_data->svc_monitor_ip,
+        input_data->svc_monitor_ip_dst,
+        &data->ls_ports, &data->lb_datapaths_map,
+        input_data->nbrec_network_function_table,
+        &data->svc_monitor_lsps, &data->local_svc_monitors_map,
+        input_data->ic_learned_svc_monitors_map,
+        &data->monitored_ports_map);
     build_lb_count_dps(&data->lb_datapaths_map);
     build_network_function_active(
         input_data->nbrec_network_function_group_table,

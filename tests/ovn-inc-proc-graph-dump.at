@@ -18,6 +18,7 @@ digraph "Incremental-Processing-Engine" {
 	NB_chassis_template_var [[style=filled, shape=box, fillcolor=white, label="NB_chassis_template_var"]];
 	NB_network_function [[style=filled, shape=box, fillcolor=white, label="NB_network_function"]];
 	NB_network_function_group [[style=filled, shape=box, fillcolor=white, label="NB_network_function_group"]];
+	NB_logical_switch_port_health_check [[style=filled, shape=box, fillcolor=white, label="NB_logical_switch_port_health_check"]];
 	SB_chassis [[style=filled, shape=box, fillcolor=white, label="SB_chassis"]];
 	SB_mirror [[style=filled, shape=box, fillcolor=white, label="SB_mirror"]];
 	SB_meter [[style=filled, shape=box, fillcolor=white, label="SB_meter"]];
@@ -75,6 +76,7 @@ digraph "Incremental-Processing-Engine" {
 	NB_chassis_template_var -> northd [[label=""]];
 	NB_network_function -> northd [[label=""]];
 	NB_network_function_group -> northd [[label=""]];
+	NB_logical_switch_port_health_check -> northd [[label=""]];
 	SB_chassis -> northd [[label=""]];
 	SB_mirror -> northd [[label=""]];
 	SB_meter -> northd [[label=""]];

@@ -75,7 +75,8 @@ static unixctl_cb_func chassis_features_list;
     NB_NODE(chassis_template_var) \
     NB_NODE(sampling_app) \
     NB_NODE(network_function) \
-    NB_NODE(network_function_group)
+    NB_NODE(network_function_group) \
+    NB_NODE(logical_switch_port_health_check)
 
     enum nb_engine_node {
 #define NB_NODE(NAME) NB_##NAME,
@@ -256,6 +257,8 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_northd, &en_nb_chassis_template_var, NULL);
     engine_add_input(&en_northd, &en_nb_network_function, NULL);
     engine_add_input(&en_northd, &en_nb_network_function_group, NULL);
+    engine_add_input(&en_northd, &en_nb_logical_switch_port_health_check,
+                     NULL);
 
     engine_add_input(&en_northd, &en_sb_chassis, NULL);
     engine_add_input(&en_northd, &en_sb_mirror, NULL);

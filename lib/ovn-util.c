@@ -521,6 +521,60 @@ find_lport_address(const struct lport_addresses *laddrs, const char *ip_s)
     return NULL;
 }
 
+static bool
+contains_ipv4_address(const struct lport_addresses *lsp_addrs,
+                      size_t n_lsp_addrs, ovs_be32 ip4)
+{
+    for (unsigned int i = 0; i < n_lsp_addrs; i++) {
+        const struct lport_addresses *laddrs = &lsp_addrs[i];
+        size_t n = laddrs->n_ipv4_addrs;
+
+        for (size_t j = 0; j < n; j++) {
+            if (laddrs->ipv4_addrs[j].addr == ip4) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+static bool
+contains_ipv6_address(const struct lport_addresses *lsp_addrs,
+                      size_t n_lsp_addrs, const struct in6_addr *ip6)
+{
+    for (unsigned int i = 0; i < n_lsp_addrs; i++) {
+        const struct lport_addresses *laddrs = &lsp_addrs[i];
+        size_t n = laddrs->n_ipv6_addrs;
+
+        for (size_t j = 0; j < n; j++) {
+            if (IN6_ARE_ADDR_EQUAL(&laddrs->ipv6_addrs[j].addr, ip6)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool
+lport_addresses_contains_ip(const struct lport_addresses *lsp_addrs,
+                            size_t n_lsp_addrs, const char *ip_s)
+{
+    struct in6_addr ip6;
+    ovs_be32 ip4;
+
+    if (ip_parse(ip_s, &ip4)) {
+        return contains_ipv4_address(lsp_addrs, n_lsp_addrs, ip4);
+    }
+
+    if (ipv6_parse(ip_s, &ip6)) {
+        return contains_ipv6_address(lsp_addrs, n_lsp_addrs, &ip6);
+    }
+
+    return false;
+}
+
 /* Go through 'addresses' and add found IPv4 addresses to 'ipv4_addrs' and
  * IPv6 addresses to 'ipv6_addrs'. */
 void

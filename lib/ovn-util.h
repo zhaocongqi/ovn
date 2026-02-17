@@ -130,6 +130,9 @@ const char *find_lport_address(const struct lport_addresses *laddrs,
 void split_addresses(const char *addresses, struct svec *ipv4_addrs,
                      struct svec *ipv6_addrs);
 
+bool lport_addresses_contains_ip(const struct lport_addresses *lport_address,
+                                 size_t n_lsp_addrs, const char *ip_s);
+
 char *alloc_nat_zone_key(const char *name, const char *type);
 
 const char *default_nb_db(void);

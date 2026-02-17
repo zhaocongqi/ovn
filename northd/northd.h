@@ -203,6 +203,7 @@ struct northd_data {
     struct hmap lb_group_datapaths_map;
     struct sset svc_monitor_lsps;
     struct hmap local_svc_monitors_map;
+    struct hmapx monitored_ports_map;
 
     /* Change tracking data. */
     struct northd_tracked_data trk_data;
