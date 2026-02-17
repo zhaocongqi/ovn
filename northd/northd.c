@@ -21286,11 +21286,91 @@ handle_port_binding_changes(const struct sbrec_port_binding_table *sb_pb_table,
     hmapx_destroy(&lr_groups);
 }
 
+static bool
+svc_monitor_matches_health_check(const struct sbrec_service_monitor *sbrec_mon,
+                                 const char *protocol,
+                                 const char *src_ip,
+                                 const char *target_ip,
+                                 uint16_t destination_port)
+{
+    if (strcmp(sbrec_mon->protocol, protocol) != 0) {
+        return false;
+    }
+
+    if (!strcmp(protocol, "tcp") || !strcmp(protocol, "udp")) {
+        if (sbrec_mon->port != destination_port) {
+            return false;
+        }
+    }
+
+    if (strcmp(sbrec_mon->src_ip, src_ip)) {
+        return false;
+    }
+
+    if (strcmp(sbrec_mon->ip, target_ip)) {
+        return false;
+    }
+
+    return true;
+}
+
+static void
+handle_service_monitor_changes(
+    struct ovsdb_idl_index *sbrec_service_monitor_by_service_type,
+    const struct hmap *ls_ports)
+{
+    const struct sbrec_service_monitor *sbrec_mon;
+    struct sbrec_service_monitor *key =
+        sbrec_service_monitor_index_init_row(
+            sbrec_service_monitor_by_service_type);
+
+    sbrec_service_monitor_set_type(key, "logical-switch-port");
+
+    SBREC_SERVICE_MONITOR_FOR_EACH_EQUAL (sbrec_mon, key,
+            sbrec_service_monitor_by_service_type) {
+
+        struct ovn_port *op = ovn_port_find(ls_ports,
+                                            sbrec_mon->logical_port);
+        if (!op) {
+            continue;
+        }
+
+        ovs_assert(op->nbsp && op->nbsp->n_health_checks);
+
+        /* There shouldn't be many health checks on port,
+         * liniar check shouldn't be heavy. */
+        for (size_t i = 0; i < op->nbsp->n_health_checks; i++) {
+            const struct nbrec_logical_switch_port_health_check *lsp_hc =
+                op->nbsp->health_checks[i];
+
+            if (!svc_monitor_matches_health_check(sbrec_mon,
+                                                  lsp_hc->protocol,
+                                                  lsp_hc->src_ip,
+                                                  lsp_hc->address,
+                                                  lsp_hc->port)) {
+                continue;
+            }
+
+            const char *desired_status = sbrec_mon->status;
+            if (desired_status) {
+                if (!lsp_hc->status ||
+                    strcmp(lsp_hc->status, desired_status)) {
+                    nbrec_logical_switch_port_health_check_set_status(
+                        lsp_hc, sbrec_mon->status);
+                }
+            }
+        }
+    }
+
+    sbrec_service_monitor_index_destroy_row(key);
+}
+
 /* Handle a fairly small set of changes in the southbound database. */
 void
 ovnsb_db_run(struct ovsdb_idl_txn *ovnsb_txn,
              const struct sbrec_port_binding_table *sb_pb_table,
              const struct sbrec_ha_chassis_group_table *sb_ha_ch_grp_table,
+             struct ovsdb_idl_index *sbrec_service_monitor_by_service_type,
              struct hmap *ls_ports,
              struct hmap *lr_ports)
 {
@@ -21301,6 +21381,8 @@ ovnsb_db_run(struct ovsdb_idl_txn *ovnsb_txn,
     struct shash ha_ref_chassis_map = SHASH_INITIALIZER(&ha_ref_chassis_map);
     handle_port_binding_changes(sb_pb_table, sb_ha_ch_grp_table,
                                 ls_ports, lr_ports, &ha_ref_chassis_map);
+    handle_service_monitor_changes(sbrec_service_monitor_by_service_type,
+                                   ls_ports);
     update_sb_ha_group_ref_chassis(sb_ha_ch_grp_table, &ha_ref_chassis_map);
 
     shash_destroy(&ha_ref_chassis_map);

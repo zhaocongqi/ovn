@@ -21431,6 +21431,7 @@ check_row_count sb:Service_Monitor 1
 
 # Wait until the services are set to online.
 wait_row_count Service_Monitor 1 status=online
+wait_row_count nb:Logical_Switch_Port_Health_Check 1 status=online protocol=icmp
 
 check ovn-nbctl lsp-hc-add lport tcp 192.168.0.250 4041 192.168.0.10
 check ovn-nbctl --wait=hv sync
@@ -21441,6 +21442,7 @@ NETNS_DAEMONIZE([lport], [nc -l -k 192.168.0.10 4041], [lport_tcp.pid])
 
 # Wait until the services are set to online.
 wait_row_count Service_Monitor 2 status=online
+wait_row_count nb:Logical_Switch_Port_Health_Check 1 status=online protocol=tcp
 
 check ovn-nbctl lsp-hc-add lport udp 192.168.0.250 4042 192.168.0.10
 
@@ -21448,6 +21450,7 @@ NETNS_DAEMONIZE([lport], [nc -ulp 4042], [lport_udp.pid])
 
 # Wait until the services are set to online.
 wait_row_count Service_Monitor 3 status=online
+wait_row_count nb:Logical_Switch_Port_Health_Check 1 status=online protocol=udp
 
 check ovn-nbctl lsp-hc-del lport
 
@@ -21458,6 +21461,7 @@ check_row_count sb:Service_Monitor 1
 
 # Wait until the services are set to online.
 wait_row_count Service_Monitor 1 status=online
+wait_row_count nb:Logical_Switch_Port_Health_Check 1 status=online protocol=icmp
 
 # IPv6 TCP health check.
 check ovn-nbctl lsp-hc-add lport tcp 2001:db8::ff 4043 2001:db8::10
@@ -21469,6 +21473,7 @@ NETNS_DAEMONIZE([lport], [nc -6 -l -k 2001:db8::10 4043], [lport_ipv6_tcp.pid])
 
 # Wait until the services are set to online.
 wait_row_count Service_Monitor 2 status=online
+wait_row_count nb:Logical_Switch_Port_Health_Check 1 status=online protocol=tcp
 
 # IPv6 UDP health check.
 check ovn-nbctl lsp-hc-add lport udp 2001:db8::ff 4044 2001:db8::10
@@ -21480,6 +21485,7 @@ NETNS_DAEMONIZE([lport], [nc -6 -u -l 2001:db8::10 4044], [lport_ipv6_udp.pid])
 
 # Wait until the services are set to online.
 wait_row_count Service_Monitor 3 status=online
+wait_row_count nb:Logical_Switch_Port_Health_Check 1 status=online protocol=udp
 
 OVN_CLEANUP_CONTROLLER([hv1])
 

@@ -50,8 +50,14 @@ en_sync_from_sb_run(struct engine_node *node, void *data OVS_UNUSED)
         EN_OVSDB_GET(engine_get_input("SB_port_binding", node));
     const struct sbrec_ha_chassis_group_table *sb_ha_ch_grp_table =
         EN_OVSDB_GET(engine_get_input("SB_ha_chassis_group", node));
+    struct ovsdb_idl_index *sbrec_service_monitor_by_service_type =
+        engine_ovsdb_node_get_index(
+            engine_get_input("SB_service_monitor", node),
+            "sbrec_service_monitor_by_service_type");
+
     ovnsb_db_run(eng_ctx->ovnsb_idl_txn,
                  sb_pb_table, sb_ha_ch_grp_table,
+                 sbrec_service_monitor_by_service_type,
                  &nd->ls_ports, &nd->lr_ports);
 
     return EN_UNCHANGED;

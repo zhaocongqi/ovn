@@ -2303,6 +2303,14 @@
       IP address to monitor for the health check.
     </column>
 
+    <column name="status">
+      Health status synchronized from the <code>status</code> field of
+      corresponding service monitor in the SBDB. This status indicates
+      the current availability of logical switch port for the CMS to
+      determine service virtual machine health and make routing or
+      failover decisions.
+    </column>
+
     <column name="options" key="interval" type='{"type": "integer"}'>
       The interval, in seconds, between service monitor checks.
     </column>

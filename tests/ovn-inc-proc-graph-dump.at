@@ -98,6 +98,7 @@ digraph "Incremental-Processing-Engine" {
 	sync_from_sb [[style=filled, shape=box, fillcolor=white, label="sync_from_sb"]];
 	northd -> sync_from_sb [[label="sync_from_sb_northd_handler"]];
 	SB_port_binding -> sync_from_sb [[label=""]];
+	SB_service_monitor -> sync_from_sb [[label=""]];
 	SB_ha_chassis_group -> sync_from_sb [[label=""]];
 	lr_nat [[style=filled, shape=box, fillcolor=white, label="lr_nat"]];
 	northd -> lr_nat [[label="lr_nat_northd_handler"]];

@@ -903,6 +903,7 @@ void ovnnb_db_run(struct northd_input *input_data,
 void ovnsb_db_run(struct ovsdb_idl_txn *ovnsb_txn,
                   const struct sbrec_port_binding_table *,
                   const struct sbrec_ha_chassis_group_table *,
+                  struct ovsdb_idl_index *,
                   struct hmap *ls_ports,
                   struct hmap *lr_ports);
 bool northd_handle_ls_changes(struct ovsdb_idl_txn *,

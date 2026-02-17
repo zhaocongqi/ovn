@@ -477,6 +477,7 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_add_input(&en_sync_from_sb, &en_northd,
                      sync_from_sb_northd_handler);
     engine_add_input(&en_sync_from_sb, &en_sb_port_binding, NULL);
+    engine_add_input(&en_sync_from_sb, &en_sb_service_monitor, NULL);
     engine_add_input(&en_sync_from_sb, &en_sb_ha_chassis_group, NULL);
 
     engine_add_input(&en_northd_output, &en_acl_id, NULL);
@@ -592,6 +593,13 @@ void inc_proc_northd_init(struct ovsdb_idl_loop *nb,
     engine_ovsdb_node_add_index(&en_sb_service_monitor,
                                 "sbrec_service_monitor_by_learned_type",
                                 sbrec_service_monitor_by_learned_type);
+
+    struct ovsdb_idl_index *sbrec_service_monitor_by_service_type
+        = ovsdb_idl_index_create1(sb->idl,
+                                  &sbrec_service_monitor_col_type);
+    engine_ovsdb_node_add_index(&en_sb_service_monitor,
+                                "sbrec_service_monitor_by_service_type",
+                                sbrec_service_monitor_by_service_type);
 
     struct ed_type_global_config *global_config =
         engine_get_internal_data(&en_global_config);
