@@ -1823,6 +1823,58 @@
       </dd>
     </dl>
 
+    <h2>Health Check commands</h2>
+    <dl>
+      <dt><code>lsp-hc-add</code> <var>PORT</var> <var>PROTOCOL</var>
+      <var>SOURCE_IP</var> [<var>DST_PORT</var>] <var>ADDRESS</var></dt>
+      <dd>
+        <p>
+          Creates a new health check configuration for the logical switch port
+          <code>PORT</code> with the below mandatory arguments.
+        </p>
+
+        <p>
+          <var>PROTOCOL</var> specifies the health check protocol -
+          <code>tcp</code>, <code>udp</code>, or <code>icmp</code>.
+        </p>
+
+        <p>
+          <var>SOURCE_IP</var> specifies the source IP address used when
+          sending health check probes.
+        </p>
+
+        <p>
+          <var>DST_PORT</var> specifies the destination port number for
+          <code>tcp</code> and <code>udp</code> health checks. This parameter
+          is ignored for <code>icmp</code> protocol.
+        </p>
+
+        <p>
+          <var>ADDRESS</var> specifies the IP address to monitor.
+        </p>
+
+        <p>
+          Additional health check options such as interval, timeout,
+          success count, and failure count can be configured separately.
+        </p>
+      </dd>
+
+      <dt><code>lsp-hc-del</code> <var>PORT</var> [<var>HC_UUID</var>]</dt>
+      <dd>
+        <p>
+          Deletes health check configuration for the logical switch port
+          <code>PORT</code>.
+        </p>
+      </dd>
+
+    <dt><code>lsp-hc-list</code> <var>PORT</var></dt>
+    <dd>
+      Lists all health check configurations for the logical switch port
+      <code>PORT</code>, including protocol, source IP, destination port,
+      monitored addresses, and current status.
+    </dd>
+    </dl>
+
     <h2>Synchronization Commands</h2>
 
     <dl>

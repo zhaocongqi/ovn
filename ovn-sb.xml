@@ -5053,6 +5053,8 @@ tcp.flags = RST;
         icmp, and the health probe is done by injecting an icmp echo request
         packet into the <code>inport</code> of the Network_Function and then
         montoring the same packet coming out of the <code>outport</code>.
+        For <code>type</code> "logical-switch-port", supported protocols are
+        <code>tcp</code>, <code>udp</code> and <code>icmp</code>.
       </column>
 
       <column name="port">
@@ -5135,6 +5137,15 @@ tcp.flags = RST;
           the service and doesn't expect any reply.  If it receives an ICMP
           reply, then it considers the service to be <code>offline</code>.
         </p>
+
+        <p>
+          For ICMP service, <code>ovn-controller</code> sends an ICMP
+          Echo Request and expects an ICMP Echo Reply to consider service
+          to be <code>online</code>. If no reply is received or if an ICMP
+          error message is received, the service is considered
+          <code>offline</code>.
+       </p>
+
       </column>
     </group>
 

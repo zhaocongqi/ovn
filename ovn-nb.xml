@@ -2214,6 +2214,11 @@
         Please see the <ref table="Mirror"/> table.
     </column>
 
+    <column name="health_checks">
+        Health checks configuration for this logical switch port.
+        Please see the <ref table="Logical_Switch_Port_Health_Check"/> table.
+    </column>
+
     <column name="ha_chassis_group">
       References a row in the OVN Northbound database's
       <ref table="HA_Chassis_Group" db="OVN_Northbound"/> table.
@@ -2268,6 +2273,54 @@
         </p>
       </column>
     </group>
+  </table>
+
+  <table name="Logical_Switch_Port_Health_Check"
+         title="logical switch port health check">
+    <p>
+      Each row represents health check configuration for logical switch port.
+      Health checks are used to monitor reachability and health of backend
+      endpoints associated with logical switch port. Health check can be
+      configured to use different protocols (TCP, UDP, or ICMP) to verify
+      availability of target IP addresses.
+    </p>
+
+    <column name="protocol">
+      Valid protocols are <code>tcp</code>, <code>udp</code>, or
+      <code>icmp</code>. For <code>tcp</code> and <code>udp</code>
+      protocols - destination port must be specified.
+    </column>
+
+    <column name="src_ip">
+      Source IP address used when sending health check probes.
+    </column>
+
+    <column name="port">
+      Destination port number for TCP and UDP health checks.
+    </column>
+
+    <column name="address">
+      IP address to monitor for the health check.
+    </column>
+
+    <column name="options" key="interval" type='{"type": "integer"}'>
+      The interval, in seconds, between service monitor checks.
+    </column>
+
+    <column name="options" key="timeout" type='{"type": "integer"}'>
+      The time, in seconds, after which the service monitor check times
+      out.
+    </column>
+
+    <column name="options" key="success_count" type='{"type": "integer"}'>
+      The number of successful checks after which the service is
+      considered <code>online</code>.
+    </column>
+
+    <column name="options" key="failure_count" type='{"type": "integer"}'>
+      The number of failure checks after which the service is considered
+    <code>offline</code>.
+    </column>
   </table>
 
   <table name="Forwarding_Group" title="forwarding group">

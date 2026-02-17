@@ -1,7 +1,7 @@
 {
     "name": "OVN_Southbound",
-    "version": "21.7.1",
-    "cksum": "3096184714 36646",
+    "version": "21.8.0",
+    "cksum": "614397313 36713",
     "tables": {
         "SB_Global": {
             "columns": {
@@ -516,7 +516,8 @@
                 "type": {"type": {"key": {
                            "type": "string",
                            "enum": ["set", ["load-balancer",
-                                            "network-function"]]},
+                                            "network-function",
+                                            "logical-switch-port"]]},
                              "min": 0, "max": 1}},
                 "ip": {"type": "string"},
                 "mac": {"type": "string"},

@@ -3519,3 +3519,195 @@ AT_CHECK([ovn-nbctl --may-exist lsp-add-localnet-port ls ln_port net1], [1], [],
 check ovn-nbctl lsp-set-options ln_port network_name=net1
 check ovn-nbctl --may-exist lsp-add-localnet-port ls ln_port net1
 ])
+
+dnl ---------------------------------------------------------------------
+
+OVN_NBCTL_TEST([ovn_nbctl_lsp_health_check], [Logical Switch Port Health Check], [
+# Create logical switch port.
+AT_CHECK([ovn-nbctl ls-add ls0])
+AT_CHECK([ovn-nbctl lsp-add ls0 lport0])
+AT_CHECK([ovn-nbctl lsp-set-addresses lport0 "00:11:22:33:44:55 192.168.1.10" "00:11:22:33:44:56 192.168.1.11"])
+
+# Create IPV4 ICMP health check.
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 icmp 192.168.0.255 192.168.1.10])
+AT_CHECK([ovn-nbctl lsp-hc-list lport0], [0], [dnl
+Logical Switch Port lport0:
+  Protocol      :  icmp
+  Source IP     :  192.168.0.255
+  Address       :  192.168.1.10
+])
+
+# Check hc attaching to logical switch port.
+hc_icmp_uuid=$(fetch_column nb:logical_switch_port_health_check _uuid src_ip="192.168.0.255")
+check_column "$hc_icmp_uuid" nb:logical_switch_port health_checks
+
+# Create IPv4 TCP health check with the specified addresses.
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 tcp 10.0.0.2 80 192.168.1.10])
+AT_CHECK([ovn-nbctl lsp-hc-list lport0], [0], [dnl
+Logical Switch Port lport0:
+  Protocol      :  tcp
+  Source IP     :  10.0.0.2
+  Port          :  80
+  Address       :  192.168.1.10
+
+  Protocol      :  icmp
+  Source IP     :  192.168.0.255
+  Address       :  192.168.1.10
+])
+hc_tcp_uuid=$(fetch_column nb:logical_switch_port_health_check _uuid src_ip="10.0.0.2")
+
+# Create UDP health check with the specified addresses.
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 udp 10.0.0.3 53 192.168.1.11])
+AT_CHECK([ovn-nbctl lsp-hc-list lport0], [0], [dnl
+Logical Switch Port lport0:
+  Protocol      :  tcp
+  Source IP     :  10.0.0.2
+  Port          :  80
+  Address       :  192.168.1.10
+
+  Protocol      :  udp
+  Source IP     :  10.0.0.3
+  Port          :  53
+  Address       :  192.168.1.11
+
+  Protocol      :  icmp
+  Source IP     :  192.168.0.255
+  Address       :  192.168.1.10
+])
+hc_udp_uuid=$(fetch_column nb:logical_switch_port_health_check _uuid src_ip="10.0.0.3")
+
+check_column "$hc_icmp_uuid $hc_tcp_uuid $hc_udp_uuid" nb:logical_switch_port health_checks
+
+AT_CHECK([ovn-nbctl lsp-hc-del lport0 $hc_icmp_uuid])
+# Check hcs detaching to logical switch port.
+check_column "$hc_tcp_uuid $hc_udp_uuid" nb:logical_switch_port health_checks
+
+AT_CHECK([ovn-nbctl lsp-hc-list lport0], [0], [dnl
+Logical Switch Port lport0:
+  Protocol      :  tcp
+  Source IP     :  10.0.0.2
+  Port          :  80
+  Address       :  192.168.1.10
+
+  Protocol      :  udp
+  Source IP     :  10.0.0.3
+  Port          :  53
+  Address       :  192.168.1.11
+])
+
+AT_CHECK([ovn-nbctl lsp-hc-del lport0])
+check_row_count nb:Logical_Switch_Port_Health_Check 0
+AT_CHECK([ovn-nbctl lsp-hc-list lport0], [0], [dnl])
+
+# Check invalid protocol.
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 stcp 10.0.0.1 50], [1], [], [stderr])
+AT_CHECK([grep "Type must be icmp, tcp, or udp" stderr], [0], [ignore])
+
+# Check invalid source IP.
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 icmp invalid_ip invalid_ip], [1], [], [stderr])
+AT_CHECK([grep "Not a valid IPv4 or IPv6 address" stderr], [0], [ignore])
+
+# Check TCP/UDP non-valid destination port.
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 tcp 10.0.0.1 70000], [1], [], [stderr])
+AT_CHECK([grep "port must in range 0...65535" stderr], [0], [ignore])
+
+# Check IP address not configured on port.
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 icmp 10.0.0.1 192.168.99.99], [1], [], [stderr])
+AT_CHECK([grep "Address 192.168.99.99 not configured on port" stderr], [0], [ignore])
+
+AT_CHECK([ovn-nbctl lsp-hc-del lport0])
+
+# Different source IP, same protocol, port and address - should be allowed.
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 tcp 10.0.0.1 80 192.168.1.10])
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 tcp 10.0.0.2 80 192.168.1.10], [0], [], [ignore])
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 tcp 10.0.0.3 80 192.168.1.10], [0], [], [ignore])
+
+# Same source IP, different ports, same protocol and address - should be allowed.
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 tcp 10.0.0.1 81 192.168.1.10], [0], [], [ignore])
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 tcp 10.0.0.1 82 192.168.1.10], [0], [], [ignore])
+
+# Same source IP and port, different protocols, same address - should be allowed.
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 udp 10.0.0.1 80 192.168.1.10], [0], [], [ignore])
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 icmp 10.0.0.1 192.168.1.10], [0], [], [ignore])
+
+# Check duplication.
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 tcp 10.0.0.5 90 192.168.1.10])
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 tcp 10.0.0.5 90 192.168.1.10], [1], [], [stderr])
+AT_CHECK([grep "Health check with address 192.168.1.10 already exists on port lport0" stderr], [0], [ignore])
+
+# ICMP - same source IP, different addresses - should be allowed.
+AT_CHECK([ovn-nbctl lsp-hc-del lport0])
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 icmp 10.0.0.9 192.168.1.10])
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 icmp 10.0.0.9 192.168.1.11], [0], [], [ignore])
+
+# ICMP - different source IP, same address - should be allowed.
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 icmp 10.0.0.10 192.168.1.10], [0], [], [ignore])
+
+# Check supported logical switch port type for monitoring.
+AT_CHECK([ovn-nbctl lsp-add ls0 lport1])
+AT_CHECK([ovn-nbctl lsp-set-type lport1 router])
+AT_CHECK([ovn-nbctl lsp-hc-add lport1 icmp 10.0.0.1 10.0.0.2], [1], [], [stderr])
+AT_CHECK([grep "Health check monitoring supported only for port with vif type" stderr], [0], [ignore])
+
+AT_CHECK([ovn-nbctl lsp-hc-del lport0])
+
+# Test IPv6 addresses support: icmp, tcp, udp.
+AT_CHECK([ovn-nbctl lsp-add ls0 lport3])
+AT_CHECK([ovn-nbctl lsp-set-addresses lport3 "00:11:22:33:44:57 2001:db8::1"])
+AT_CHECK([ovn-nbctl lsp-hc-add lport3 icmp 2001:db8::2 2001:db8::1])
+AT_CHECK([ovn-nbctl lsp-hc-add lport3 tcp 2001:db8::2 80 2001:db8::1])
+AT_CHECK([ovn-nbctl lsp-hc-add lport3 udp 2001:db8::2 53 2001:db8::1])
+AT_CHECK([ovn-nbctl lsp-hc-list lport3], [0], [dnl
+Logical Switch Port lport3:
+  Protocol      :  icmp
+  Source IP     :  2001:db8::2
+  Address       :  2001:db8::1
+
+  Protocol      :  tcp
+  Source IP     :  2001:db8::2
+  Port          :  80
+  Address       :  2001:db8::1
+
+  Protocol      :  udp
+  Source IP     :  2001:db8::2
+  Port          :  53
+  Address       :  2001:db8::1
+])
+
+AT_CHECK([ovn-nbctl lsp-hc-del lport3])
+
+# Duplicate IPv6 health check - should be disabled.
+AT_CHECK([ovn-nbctl lsp-hc-add lport3 icmp 2001:db8::2 2001:db8::1])
+AT_CHECK([ovn-nbctl lsp-hc-add lport3 icmp 2001:db8::2 2001:db8::1], [1], [], [stderr])
+AT_CHECK([grep "Health check with address 2001:db8::1 already exists on port lport3" stderr], [0], [ignore])
+
+# Check options printing.
+AT_CHECK([ovn-nbctl lsp-hc-add lport0 icmp 10.0.0.4 192.168.1.10 192.168.1.11])
+AT_CHECK([ovn-nbctl lsp-hc-list lport0], [0], [dnl
+Logical Switch Port lport0:
+  Protocol      :  icmp
+  Source IP     :  10.0.0.4
+  Address       :  192.168.1.10
+])
+hc_icmp_uuid=$(fetch_column nb:logical_switch_port_health_check _uuid src_ip="10.0.0.4")
+
+AT_CHECK([ovn-nbctl set logical_switch_port_health_check $hc_icmp_uuid options:interval=3])
+AT_CHECK([ovn-nbctl set logical_switch_port_health_check $hc_icmp_uuid options:timeout=30])
+AT_CHECK([ovn-nbctl set logical_switch_port_health_check $hc_icmp_uuid options:success_count=1])
+AT_CHECK([ovn-nbctl set logical_switch_port_health_check $hc_icmp_uuid options:failure_count=2])
+
+AT_CHECK([ovn-nbctl lsp-hc-list lport0], [0], [dnl
+Logical Switch Port lport0:
+  Protocol      :  icmp
+  Source IP     :  10.0.0.4
+  Address       :  192.168.1.10
+  Interval      :  3
+  Timeout       :  30
+  Success count :  1
+  Failure count :  2
+])
+
+AT_CHECK([ovn-nbctl lsp-hc-del lport0])
+AT_CHECK([ovn-nbctl lsp-hc-del lport3])
+check_row_count nb:Logical_Switch_Port_Health_Check 0
+])
