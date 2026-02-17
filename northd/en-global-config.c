@@ -124,16 +124,19 @@ en_global_config_run(struct engine_node *node , void *data)
     const char *mac_addr_prefix = set_mac_prefix(smap_get(&nb->options,
                                                           "mac_prefix"));
 
-    const char *monitor_mac = smap_get(&nb->options, "svc_monitor_mac");
-    if (monitor_mac) {
-        if (eth_addr_from_string(monitor_mac,
-                                 &config_data->svc_monitor_mac_ea)) {
-            snprintf(config_data->svc_monitor_mac,
-                     sizeof config_data->svc_monitor_mac,
+    struct svc_monitor_addresses *svc_addresses =
+        &config_data->svc_global_addresses;
+
+    const char *src_monitor_mac = smap_get(&nb->options, "svc_monitor_mac");
+    if (src_monitor_mac) {
+        if (eth_addr_from_string(src_monitor_mac,
+                                 &svc_addresses->mac_ea_src)) {
+            snprintf(svc_addresses->mac_src,
+                     sizeof svc_addresses->mac_src,
                      ETH_ADDR_FMT,
-                     ETH_ADDR_ARGS(config_data->svc_monitor_mac_ea));
+                     ETH_ADDR_ARGS(svc_addresses->mac_ea_src));
         } else {
-            monitor_mac = NULL;
+            src_monitor_mac = NULL;
         }
     }
 
@@ -141,22 +144,21 @@ en_global_config_run(struct engine_node *node , void *data)
                                            "svc_monitor_mac_dst");
     if (dst_monitor_mac) {
         if (eth_addr_from_string(dst_monitor_mac,
-                                 &config_data->svc_monitor_mac_ea_dst)) {
-            snprintf(config_data->svc_monitor_mac_dst,
-                     sizeof config_data->svc_monitor_mac_dst,
+                                 &svc_addresses->mac_ea_dst)) {
+            snprintf(svc_addresses->mac_dst,
+                     sizeof svc_addresses->mac_dst,
                      ETH_ADDR_FMT,
-                     ETH_ADDR_ARGS(config_data->svc_monitor_mac_ea_dst));
+                     ETH_ADDR_ARGS(svc_addresses->mac_ea_dst));
         } else {
             dst_monitor_mac = NULL;
         }
     }
 
     const char *monitor_ip = smap_get(&nb->options, "svc_monitor_ip");
-    update_svc_monitor_addr(monitor_ip, &config_data->svc_monitor_ip);
+    update_svc_monitor_addr(monitor_ip, &svc_addresses->ip_src);
 
     const char *monitor_ip_dst = smap_get(&nb->options, "svc_monitor_ip_dst");
-    update_svc_monitor_addr(monitor_ip_dst,
-                            &config_data->svc_monitor_ip_dst);
+    update_svc_monitor_addr(monitor_ip_dst, &svc_addresses->ip_dst);
 
     struct smap *options = &config_data->nb_options;
     smap_destroy(options);
@@ -164,22 +166,22 @@ en_global_config_run(struct engine_node *node , void *data)
 
     smap_replace(options, "mac_prefix", mac_addr_prefix);
 
-    if (!monitor_mac) {
-        eth_addr_random(&config_data->svc_monitor_mac_ea);
-        snprintf(config_data->svc_monitor_mac,
-                 sizeof config_data->svc_monitor_mac, ETH_ADDR_FMT,
-                 ETH_ADDR_ARGS(config_data->svc_monitor_mac_ea));
+    if (!src_monitor_mac) {
+        eth_addr_random(&svc_addresses->mac_ea_src);
+        snprintf(svc_addresses->mac_src,
+                 sizeof svc_addresses->mac_src, ETH_ADDR_FMT,
+                 ETH_ADDR_ARGS(svc_addresses->mac_ea_src));
         smap_replace(options, "svc_monitor_mac",
-                     config_data->svc_monitor_mac);
+                     svc_addresses->mac_src);
     }
 
     if (!dst_monitor_mac) {
-        eth_addr_random(&config_data->svc_monitor_mac_ea_dst);
-        snprintf(config_data->svc_monitor_mac_dst,
-                 sizeof config_data->svc_monitor_mac_dst, ETH_ADDR_FMT,
-                 ETH_ADDR_ARGS(config_data->svc_monitor_mac_ea_dst));
+        eth_addr_random(&svc_addresses->mac_ea_dst);
+        snprintf(svc_addresses->mac_dst,
+                 sizeof svc_addresses->mac_dst, ETH_ADDR_FMT,
+                 ETH_ADDR_ARGS(svc_addresses->mac_ea_dst));
         smap_replace(options, "svc_monitor_mac_dst",
-                     config_data->svc_monitor_mac_dst);
+                     svc_addresses->mac_dst);
     }
 
     bool ic_vxlan_mode = false;
@@ -244,8 +246,8 @@ void en_global_config_cleanup(void *data OVS_UNUSED)
     struct ed_type_global_config *config_data = data;
     smap_destroy(&config_data->nb_options);
     smap_destroy(&config_data->sb_options);
-    free(config_data->svc_monitor_ip);
-    free(config_data->svc_monitor_ip_dst);
+    free(config_data->svc_global_addresses.ip_src);
+    free(config_data->svc_global_addresses.ip_dst);
     destroy_debug_config();
 }
 

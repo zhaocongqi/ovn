@@ -111,7 +111,8 @@ lflow_get_input_data(struct engine_node *node,
     lflow_input->features = &global_config->features;
     lflow_input->ovn_internal_version_changed =
         global_config->ovn_internal_version_changed;
-    lflow_input->svc_monitor_mac = global_config->svc_monitor_mac;
+    lflow_input->svc_monitor_mac =
+        global_config->svc_global_addresses.mac_src;
 
     struct ed_type_sampling_app_data *sampling_app_data =
         engine_get_input_data("sampling_app", node);

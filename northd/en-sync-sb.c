@@ -106,8 +106,8 @@ en_sync_to_sb_addr_set_run(struct engine_node *node, void *data OVS_UNUSED)
                    nb_port_group_table, sb_address_set_table,
                    &lr_stateful_data->table,
                    &northd_data->lr_datapaths,
-                   global_config->svc_monitor_mac,
-                   global_config->svc_monitor_mac_dst);
+                   global_config->svc_global_addresses.mac_src,
+                   global_config->svc_global_addresses.mac_dst);
 
     return EN_UPDATED;
 }

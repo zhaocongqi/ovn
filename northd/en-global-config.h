@@ -30,27 +30,29 @@ struct global_config_tracked_data {
     bool chassis_features_changed;
 };
 
+struct svc_monitor_addresses {
+    /* MAC allocated for service monitor usage. Just one pair is allocated
+     * for this purpose and ovn-controller's on each chassis will make use
+     * of this pair when sending out the packets to monitor the services
+     * defined in Service_Monitor Southbound table. Since these packets
+     * are locally handled, having just one pair is good enough. */
+    char mac_src[ETH_ADDR_STRLEN + 1];
+    struct eth_addr mac_ea_src;
+    char mac_dst[ETH_ADDR_STRLEN + 1];
+    struct eth_addr mac_ea_dst;
+
+    /* IP addresses configured for NF service monitor usage. */
+    char *ip_src;
+    char *ip_dst;
+};
+
 /* struct which maintains the data of the engine node global_config. */
 struct ed_type_global_config {
     struct smap nb_options;
     struct smap sb_options;
     const struct nbrec_nb_global *nb_global;
     const struct sbrec_sb_global *sb_global;
-
-    /* MAC allocated for service monitor usage. Just one pair is allocated
-     * for this purpose and ovn-controller's on each chassis will make use
-     * of this pair when sending out the packets to monitor the services
-     * defined in Service_Monitor Southbound table. Since these packets
-     * are locally handled, having just one pair is good enough. */
-    char svc_monitor_mac[ETH_ADDR_STRLEN + 1];
-    struct eth_addr svc_monitor_mac_ea;
-    char svc_monitor_mac_dst[ETH_ADDR_STRLEN + 1];
-    struct eth_addr svc_monitor_mac_ea_dst;
-
-    /* IP addresses configured for NF service monitor usage. */
-    char *svc_monitor_ip;
-    char *svc_monitor_ip_dst;
-
+    struct svc_monitor_addresses svc_global_addresses;
     struct chassis_features features;
 
     bool ovn_internal_version_changed;
