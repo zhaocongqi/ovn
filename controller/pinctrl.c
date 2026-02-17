@@ -6912,6 +6912,8 @@ enum svc_monitor_type {
     SVC_MON_TYPE_LB,
     /* network function */
     SVC_MON_TYPE_NF,
+    /* logical switch port */
+    SVC_MON_TYPE_LSP,
 };
 
 /* Service monitor health checks. */
@@ -7019,6 +7021,56 @@ pinctrl_find_svc_monitor(uint32_t dp_key, uint32_t port_key,
     return NULL;
 }
 
+static enum svc_monitor_type
+svc_monitor_type_from_sb(const struct sbrec_service_monitor *sb)
+{
+    if (sb->type && !strcmp(sb->type, "network-function")) {
+        return SVC_MON_TYPE_NF;
+    }
+
+    if (sb->type && !strcmp(sb->type, "logical-switch-port")) {
+        return SVC_MON_TYPE_LSP;
+    }
+
+    return SVC_MON_TYPE_LB;
+}
+
+static enum svc_monitor_protocol
+svc_monitor_proto_from_sb(const struct sbrec_service_monitor *sb)
+{
+    if (!strcmp(sb->protocol, "udp")) {
+        return SVC_MON_PROTO_UDP;
+    }
+
+    if (!strcmp(sb->protocol, "icmp")) {
+        return SVC_MON_PROTO_ICMP;
+    }
+
+    return SVC_MON_PROTO_TCP;
+}
+
+static bool
+svc_monitor_type_allows_proto(enum svc_monitor_type type,
+                              enum svc_monitor_protocol proto)
+{
+    switch (type) {
+    case SVC_MON_TYPE_NF:
+        return proto == SVC_MON_PROTO_ICMP;
+
+    case SVC_MON_TYPE_LB:
+        return proto == SVC_MON_PROTO_TCP ||
+               proto == SVC_MON_PROTO_UDP;
+
+    case SVC_MON_TYPE_LSP:
+        return true;
+
+    default:
+        OVS_NOT_REACHED();
+    }
+
+    return false;
+}
+
 static void
 sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
                   const struct sbrec_service_monitor_table *svc_mon_table,
@@ -7035,23 +7087,6 @@ sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
 
     const struct sbrec_service_monitor *sb_svc_mon;
     SBREC_SERVICE_MONITOR_TABLE_FOR_EACH (sb_svc_mon, svc_mon_table) {
-        enum svc_monitor_type mon_type;
-        if (sb_svc_mon->type && !strcmp(sb_svc_mon->type,
-                                        "network-function")) {
-            mon_type = SVC_MON_TYPE_NF;
-        } else {
-            mon_type = SVC_MON_TYPE_LB;
-        }
-
-        enum svc_monitor_protocol protocol;
-        if (!strcmp(sb_svc_mon->protocol, "udp")) {
-            protocol = SVC_MON_PROTO_UDP;
-        } else if (!strcmp(sb_svc_mon->protocol, "icmp")) {
-            protocol = SVC_MON_PROTO_ICMP;
-        } else {
-            protocol = SVC_MON_PROTO_TCP;
-        }
-
         const struct sbrec_port_binding *pb
             = lport_lookup_by_name(sbrec_port_binding_by_name,
                                    sb_svc_mon->logical_port);
@@ -7085,10 +7120,16 @@ sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
         struct eth_addr ea;
         bool mac_found = false;
 
+        enum svc_monitor_type mon_type =
+            svc_monitor_type_from_sb(sb_svc_mon);
+        enum svc_monitor_protocol protocol =
+            svc_monitor_proto_from_sb(sb_svc_mon);
+
+        if (!svc_monitor_type_allows_proto(mon_type, protocol)) {
+            continue;
+        }
+
         if (mon_type == SVC_MON_TYPE_NF) {
-            if (protocol != SVC_MON_PROTO_ICMP) {
-                continue;
-            }
             input_pb = lport_lookup_by_name(sbrec_port_binding_by_name,
                                             sb_svc_mon->logical_input_port);
             if (!input_pb) {
@@ -7103,11 +7144,6 @@ sync_svc_monitors(struct ovsdb_idl_txn *ovnsb_idl_txn,
                 }
             }
         } else {
-            if (protocol != SVC_MON_PROTO_TCP &&
-                protocol != SVC_MON_PROTO_UDP) {
-                continue;
-            }
-
             for (size_t i = 0; i < pb->n_mac && !mac_found; i++) {
                 struct lport_addresses laddrs;
 
@@ -8066,6 +8102,7 @@ static void
 svc_monitor_send_icmp_health_check__(struct rconn *swconn,
                                      struct svc_monitor *svc_mon)
 {
+    bool svc_mon_nf = svc_mon->type == SVC_MON_TYPE_NF;
     uint64_t packet_stub[128 / 8];
     struct dp_packet packet;
     dp_packet_use_stub(&packet, packet_stub, sizeof packet_stub);
@@ -8112,7 +8149,8 @@ svc_monitor_send_icmp_health_check__(struct rconn *swconn,
     struct ofpbuf ofpacts = OFPBUF_STUB_INITIALIZER(ofpacts_stub);
     enum ofp_version version = rconn_get_version(swconn);
     put_load(svc_mon->dp_key, MFF_LOG_DATAPATH, 0, 64, &ofpacts);
-    put_load(svc_mon->input_port_key, MFF_LOG_OUTPORT, 0, 32, &ofpacts);
+    put_load(svc_mon_nf ? svc_mon->input_port_key : svc_mon->port_key,
+             MFF_LOG_OUTPORT, 0, 32, &ofpacts);
     put_load(1, MFF_LOG_FLAGS, MLF_LOCAL_ONLY, 1, &ofpacts);
     struct ofpact_resubmit *resubmit = ofpact_put_RESUBMIT(&ofpacts);
     resubmit->in_port = OFPP_CONTROLLER;
@@ -8406,48 +8444,57 @@ pinctrl_handle_svc_check(struct rconn *swconn, const struct flow *ip_flow,
             return;
         }
 
-        /* Handle ICMP ECHO REQUEST probes for Network Function services */
+        /* Handle ICMP ECHO REQUEST probes for Network Function and
+         * Logical Switch Port services */
         if (in_eth->eth_type == htons(ETH_TYPE_IP)) {
             struct icmp_header *ih = l4h;
             /* It's ICMP packet. */
-            if (ih->icmp_type == ICMP4_ECHO_REQUEST && ih->icmp_code == 0) {
-                uint32_t hash = hash_bytes(&dst_ip_addr, sizeof dst_ip_addr,
-                                           hash_3words(dp_key, port_key, 0));
+            if ((ih->icmp_type == ICMP4_ECHO_REQUEST ||
+                 ih->icmp_type == ICMP4_ECHO_REPLY) && ih->icmp_code == 0) {
+                int is_echo_request = ih->icmp_type == ICMP4_ECHO_REQUEST;
+                struct in6_addr *target_addr = is_echo_request
+                                               ? &dst_ip_addr : &ip_addr;
+                uint32_t hash =
+                    hash_bytes(target_addr, sizeof(*target_addr),
+                               hash_3words(dp_key, port_key, 0));
                 struct svc_monitor *svc_mon =
-                    pinctrl_find_svc_monitor(dp_key, port_key, &dst_ip_addr, 0,
+                    pinctrl_find_svc_monitor(dp_key, port_key, target_addr, 0,
                                              SVC_MON_PROTO_ICMP, hash);
                 if (!svc_mon) {
-                    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(
-                        1, 5);
+                    static struct vlog_rate_limit rl =
+                        VLOG_RATE_LIMIT_INIT(1, 5);
                     VLOG_WARN_RL(&rl, "handle service check: Service monitor "
-                                 "not found for ICMP request");
+                                 "not found for ICMP %s", is_echo_request ?
+                                 "request" : "reply");
                     return;
                 }
-                if (svc_mon->type == SVC_MON_TYPE_NF) {
-                    pinctrl_handle_icmp_svc_check(pkt_in, svc_mon);
-                }
+                pinctrl_handle_icmp_svc_check(pkt_in, svc_mon);
                 return;
             }
         } else if (in_eth->eth_type == htons(ETH_TYPE_IPV6)) {
             struct icmp6_data_header *ih6 = l4h;
             /* It's ICMPv6 packet. */
-            if (ih6->icmp6_base.icmp6_type == ICMP6_ECHO_REQUEST &&
+            if ((ih6->icmp6_base.icmp6_type == ICMP6_ECHO_REQUEST ||
+                ih6->icmp6_base.icmp6_type == ICMP6_ECHO_REPLY) &&
                 ih6->icmp6_base.icmp6_code == 0) {
-                uint32_t hash = hash_bytes(&dst_ip_addr, sizeof dst_ip_addr,
+                int is_echo_request =
+                    (ih6->icmp6_base.icmp6_type == ICMP6_ECHO_REQUEST);
+                struct in6_addr *target_addr = is_echo_request
+                                               ? &dst_ip_addr : &ip_addr;
+                uint32_t hash = hash_bytes(target_addr, sizeof(*target_addr),
                                            hash_3words(dp_key, port_key, 0));
                 struct svc_monitor *svc_mon =
-                    pinctrl_find_svc_monitor(dp_key, port_key, &dst_ip_addr, 0,
+                    pinctrl_find_svc_monitor(dp_key, port_key, target_addr, 0,
                                              SVC_MON_PROTO_ICMP, hash);
                 if (!svc_mon) {
-                    static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(
-                        1, 5);
+                    static struct vlog_rate_limit rl =
+                        VLOG_RATE_LIMIT_INIT(1, 5);
                     VLOG_WARN_RL(&rl, "handle service check: Service monitor "
-                                 "not found for ICMPv6 request");
+                                 "not found for ICMPv6 %s", is_echo_request ?
+                                 "request" : "reply");
                     return;
                 }
-                if (svc_mon->type == SVC_MON_TYPE_NF) {
-                    pinctrl_handle_icmp_svc_check(pkt_in, svc_mon);
-                }
+                pinctrl_handle_icmp_svc_check(pkt_in, svc_mon);
                 return;
             }
         }
