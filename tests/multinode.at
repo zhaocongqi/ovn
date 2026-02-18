@@ -3515,8 +3515,11 @@ m_wait_for_ports_up
 
 # Enable EVPN support for the distributed logical switch and redistribute
 # local FDBs.
-check multinode_nbctl set logical_switch ls          \
-    other_config:dynamic-routing-vni=$vni            \
+check multinode_nbctl set logical_switch ls               \
+    other_config:dynamic-routing-vni=$vni                 \
+    other_config:dynamic-routing-bridge-ifname=br-$vni    \
+    other_config:dynamic-routing-vxlan-ifname=vxlan-$vni  \
+    other_config:dynamic-routing-advertise-ifname=lo-$vni \
     other_config:dynamic-routing-redistribute=fdb,ip
 check multinode_nbctl --wait=hv sync
 dp_key=$(m_fetch_column Datapath_Binding tunnel_key external_ids:name=ls)
@@ -4336,8 +4339,11 @@ check m_as ovn-gw-2 /data/create_fake_vm.sh w2 w2 \
 m_wait_for_ports_up
 
 # Enable EVPN support for the distributed logical switch.
-check multinode_nbctl set logical_switch ls \
-    other_config:dynamic-routing-vni=$vni   \
+check multinode_nbctl set logical_switch ls               \
+    other_config:dynamic-routing-vni=$vni                 \
+    other_config:dynamic-routing-bridge-ifname=br-$vni    \
+    other_config:dynamic-routing-vxlan-ifname=vxlan-$vni  \
+    other_config:dynamic-routing-advertise-ifname=lo-$vni \
     other_config:dynamic-routing-redistribute=fdb,ip
 
 check multinode_nbctl --wait=hv sync

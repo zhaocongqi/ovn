@@ -213,12 +213,9 @@ m4_define([SET_EVPN_IFACE_NAMES],
         [[ $ifname = "default" ]] && VXLAN_V6_NAME=vxlan-v6-$vni || VXLAN_V6_NAME=vxlan-v6-$ifname
         [[ $ifname = "default" ]] && LO_NAME=lo-$vni || LO_NAME=lo-$ifname
 
-        if [[ $ifname != "default" ]]; then
-            check ovn-nbctl set logical_switch $switch                 \
-                other_config:dynamic-routing-bridge-ifname=$BR_NAME    \
-                other_config:dynamic-routing-advertise-ifname=$LO_NAME
-        fi
-        check ovn-nbctl set logical_switch $switch  \
+        check ovn-nbctl set logical_switch $switch                 \
+            other_config:dynamic-routing-bridge-ifname=$BR_NAME    \
+            other_config:dynamic-routing-advertise-ifname=$LO_NAME \
             other_config:dynamic-routing-vxlan-ifname=$VXLAN_NAME","$VXLAN_V6_NAME
 
         export BR_NAME VXLAN_NAME VXLAN_V6_NAME LO_NAME

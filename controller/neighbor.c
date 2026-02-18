@@ -28,12 +28,6 @@
 
 VLOG_DEFINE_THIS_MODULE(neighbor);
 
-static const char *neighbor_interface_prefixes[] = {
-    [NEIGH_IFACE_BRIDGE] = "br-",
-    [NEIGH_IFACE_VXLAN] = "vxlan-",
-    [NEIGH_IFACE_LOOPBACK] = "lo-",
-};
-
 static const char *neighbor_opt_name[] = {
     [NEIGH_IFACE_BRIDGE] = "dynamic-routing-bridge-ifname",
     [NEIGH_IFACE_VXLAN] = "dynamic-routing-vxlan-ifname",
@@ -87,17 +81,16 @@ advertise_neigh_find(const struct hmap *neighbors, struct eth_addr mac,
 
 static void
 neigh_parse_device_name(struct sset *device_names, struct local_datapath *ld,
-                        enum neighbor_interface_type type, uint32_t vni)
+                        enum neighbor_interface_type type)
 {
     const char *names = smap_get_def(&ld->datapath->external_ids,
                                      neighbor_opt_name[type], "");
     sset_from_delimited_string(device_names, names, ",");
     if (sset_is_empty(device_names)) {
-        /* Default device name if not specified. */
-        char if_name[IFNAMSIZ + 1];
-        snprintf(if_name, sizeof if_name, "%s%"PRIu32,
-                 neighbor_interface_prefixes[type], vni);
-        sset_add(device_names, if_name);
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "Datapath "UUID_FMT" misses %s",
+                     UUID_ARGS(&ld->datapath->header_.uuid),
+                     neighbor_opt_name[type]);
     }
 }
 
@@ -123,7 +116,7 @@ neighbor_run(struct neighbor_ctx_in *n_ctx_in,
         }
 
         struct sset device_names;
-        neigh_parse_device_name(&device_names, ld, NEIGH_IFACE_VXLAN, vni);
+        neigh_parse_device_name(&device_names, ld, NEIGH_IFACE_VXLAN);
         const char *name;
         SSET_FOR_EACH (name, &device_names) {
             struct neighbor_interface_monitor *vxlan =
@@ -133,49 +126,57 @@ neighbor_run(struct neighbor_ctx_in *n_ctx_in,
         }
         sset_destroy(&device_names);
 
-        neigh_parse_device_name(&device_names, ld, NEIGH_IFACE_LOOPBACK, vni);
+        struct neighbor_interface_monitor *lo = NULL;
+        neigh_parse_device_name(&device_names, ld, NEIGH_IFACE_LOOPBACK);
         if (sset_count(&device_names) > 1) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
             VLOG_WARN_RL(&rl, "Datapath "UUID_FMT" too many names provided "
                               "for loopback device",
                          UUID_ARGS(&ld->datapath->header_.uuid));
         }
-        struct neighbor_interface_monitor *lo =
-            neighbor_interface_monitor_alloc(NEIGH_AF_BRIDGE,
-                                             NEIGH_IFACE_LOOPBACK, vni,
-                                             SSET_FIRST(&device_names));
-        vector_push(n_ctx_out->monitored_interfaces, &lo);
+
+        if (!sset_is_empty(&device_names)) {
+            lo = neighbor_interface_monitor_alloc(NEIGH_AF_BRIDGE,
+                                                  NEIGH_IFACE_LOOPBACK, vni,
+                                                  SSET_FIRST(&device_names));
+            vector_push(n_ctx_out->monitored_interfaces, &lo);
+        }
         sset_destroy(&device_names);
 
-        neigh_parse_device_name(&device_names, ld, NEIGH_IFACE_BRIDGE, vni);
+        struct neighbor_interface_monitor *br_v4 = NULL;
+        struct neighbor_interface_monitor *br_v6 = NULL;
+        neigh_parse_device_name(&device_names, ld, NEIGH_IFACE_BRIDGE);
         if (sset_count(&device_names) > 1) {
             static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
             VLOG_WARN_RL(&rl, "Datapath "UUID_FMT" too many names provided "
                               "for bridge device",
                          UUID_ARGS(&ld->datapath->header_.uuid));
         }
-        struct neighbor_interface_monitor *br_v4 =
-            neighbor_interface_monitor_alloc(NEIGH_AF_INET,
-                                             NEIGH_IFACE_BRIDGE, vni,
-                                             SSET_FIRST(&device_names));
-        vector_push(n_ctx_out->monitored_interfaces, &br_v4);
 
-        struct neighbor_interface_monitor *br_v6 =
-            neighbor_interface_monitor_alloc(NEIGH_AF_INET6,
-                                             NEIGH_IFACE_BRIDGE, vni,
-                                             SSET_FIRST(&device_names));
-        vector_push(n_ctx_out->monitored_interfaces, &br_v6);
+        if (!sset_is_empty(&device_names)) {
+            br_v4 =
+                neighbor_interface_monitor_alloc(NEIGH_AF_INET,
+                                                 NEIGH_IFACE_BRIDGE, vni,
+                                                 SSET_FIRST(&device_names));
+            vector_push(n_ctx_out->monitored_interfaces, &br_v4);
+
+            br_v6 =
+                neighbor_interface_monitor_alloc(NEIGH_AF_INET6,
+                                                 NEIGH_IFACE_BRIDGE, vni,
+                                                 SSET_FIRST(&device_names));
+            vector_push(n_ctx_out->monitored_interfaces, &br_v6);
+        }
         sset_destroy(&device_names);
 
         enum neigh_redistribute_mode mode =
             parse_neigh_dynamic_redistribute(&ld->datapath->external_ids);
-        if (nrm_mode_FDB_is_set(mode)) {
+        if (nrm_mode_FDB_is_set(mode) && lo) {
             neighbor_collect_mac_to_advertise(n_ctx_in,
                                               &lo->announced_neighbors,
                                               n_ctx_out->advertised_pbs,
                                               ld->datapath);
         }
-        if (nrm_mode_IP_is_set(mode)) {
+        if (nrm_mode_IP_is_set(mode) && br_v4 && br_v6) {
             neighbor_collect_ip_mac_to_advertise(n_ctx_in,
                                                  &br_v4->announced_neighbors,
                                                  &br_v6->announced_neighbors,

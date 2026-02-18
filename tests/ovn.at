@@ -45775,3 +45775,85 @@ AT_CHECK([ovs-ofctl dump-flows br-int table=$acl_in_eval | grep -q "tp_dst=80"],
 OVN_CLEANUP([hv1])
 AT_CLEANUP
 ])
+
+OVN_FOR_EACH_NORTHD([
+AT_SETUP([EVPN ifname configurations])
+ovn_start
+
+net_add n1
+sim_add hv
+ovs-vsctl add-br br-phys
+ovn_attach n1 br-phys 192.168.0.1
+
+as northd
+check ovn-appctl -t ovn-northd vlog/set jsonrpc:info
+check ovn-appctl -t ovn-northd vlog/disable-rate-limit
+as hv
+check ovn-appctl -t ovn-controller vlog/disable-rate-limit
+
+clear_logs() {
+    as northd
+    check ovn-appctl -t ovn-northd vlog/close
+    check rm northd/ovn-northd.log
+    check ovn-appctl -t ovn-northd vlog/reopen
+
+    as hv
+    check ovn-appctl -t ovn-controller vlog/close
+    check rm hv/ovn-controller.log
+    check ovn-appctl -t ovn-controller vlog/reopen
+}
+
+check ovn-nbctl ls-add ls -- lsp-add ls lsp
+check ovs-vsctl add-port br-int lsp -- \
+    set Interface lsp external_ids:iface-id=lsp
+
+wait_for_ports_up
+check ovn-nbctl --wait=hv sync
+
+AS_BOX([Missing bridge ifname])
+clear_logs
+check ovn-nbctl --wait=hv                                                      \
+    -- set logical_switch ls other_config:dynamic-routing-vni=42               \
+    -- set logical_switch ls other_config:dynamic-routing-vxlan-ifname=foo     \
+    -- set logical_switch ls other_config:dynamic-routing-advertise-ifname=bar
+
+OVS_WAIT_UNTIL([grep -q "WARN.*dynamic-routing-bridge-ifname" northd/ovn-northd.log])
+OVS_WAIT_UNTIL([grep -q "WARN.*dynamic-routing-bridge-ifname" hv/ovn-controller.log])
+check ovn-nbctl --wait=hv clear logical_switch ls other_config
+
+AS_BOX([Missing vxlan ifname])
+clear_logs
+check ovn-nbctl --wait=hv                                                      \
+    -- set logical_switch ls other_config:dynamic-routing-vni=42               \
+    -- set logical_switch ls other_config:dynamic-routing-bridge-ifname=foo    \
+    -- set logical_switch ls other_config:dynamic-routing-advertise-ifname=bar
+
+OVS_WAIT_UNTIL([grep -q "WARN.*dynamic-routing-vxlan-ifname" northd/ovn-northd.log])
+OVS_WAIT_UNTIL([grep -q "WARN.*dynamic-routing-vxlan-ifname" hv/ovn-controller.log])
+check ovn-nbctl --wait=hv clear logical_switch ls other_config
+
+AS_BOX([Missing advertise ifname])
+clear_logs
+check ovn-nbctl --wait=hv                                                   \
+    -- set logical_switch ls other_config:dynamic-routing-vni=42            \
+    -- set logical_switch ls other_config:dynamic-routing-bridge-ifname=foo \
+    -- set logical_switch ls other_config:dynamic-routing-vxlan-ifname=bar
+
+OVS_WAIT_UNTIL([grep -q "WARN.*dynamic-routing-advertise-ifname" northd/ovn-northd.log])
+OVS_WAIT_UNTIL([grep -q "WARN.*dynamic-routing-advertise-ifname" hv/ovn-controller.log])
+check ovn-nbctl --wait=hv clear logical_switch ls other_config
+
+AS_BOX([Valid config])
+clear_logs
+check ovn-nbctl --wait=hv                                                      \
+    -- set logical_switch ls other_config:dynamic-routing-vni=42               \
+    -- set logical_switch ls other_config:dynamic-routing-bridge-ifname=foo    \
+    -- set logical_switch ls other_config:dynamic-routing-vxlan-ifname=bar     \
+    -- set logical_switch ls other_config:dynamic-routing-advertise-ifname=xyz
+
+AT_CHECK([grep -q "WARN.*dynamic-routing" northd/ovn-northd.log], [1])
+AT_CHECK([grep -q "WARN.*dynamic-routing" hv/ovn-controller.log], [1])
+
+OVN_CLEANUP([hv])
+AT_CLEANUP
+])

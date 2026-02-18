@@ -59,6 +59,20 @@ get_requested_tunnel_key(const struct nbrec_logical_switch *nbs,
     return requested_tunnel_key;
 }
 
+static const char *
+get_dynamic_device_name(const struct nbrec_logical_switch *nbs,
+                        const char *dynamic_routing_option)
+{
+    const char *ifname = smap_get(&nbs->other_config, dynamic_routing_option);
+
+    if (!ifname) {
+        static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 5);
+        VLOG_WARN_RL(&rl, "Missing %s for datapath %s",
+                     dynamic_routing_option, nbs->name);
+    }
+    return ifname;
+}
+
 static bool
 check_dynamic_device_name(const char *dynamic_routing_option,
                           const char *if_name)
@@ -125,46 +139,47 @@ gather_external_ids(const struct nbrec_logical_switch *nbs,
     const char *vni = smap_get(&nbs->other_config, "dynamic-routing-vni");
     if (vni) {
         smap_add(external_ids, "dynamic-routing-vni", vni);
-    }
 
-    const char *bridge_ifname = smap_get(&nbs->other_config,
-                                         "dynamic-routing-bridge-ifname");
-    if (bridge_ifname &&
-        check_dynamic_device_name("dynamic-routing-bridge-ifname",
-                                  bridge_ifname)) {
-        smap_add(external_ids, "dynamic-routing-bridge-ifname",
-                 bridge_ifname);
-    }
+        const char *bridge_ifname =
+            get_dynamic_device_name(nbs, "dynamic-routing-bridge-ifname");
+        if (bridge_ifname &&
+            check_dynamic_device_name("dynamic-routing-bridge-ifname",
+                                      bridge_ifname)) {
+            smap_add(external_ids, "dynamic-routing-bridge-ifname",
+                     bridge_ifname);
+        }
 
-    const char *vxlan_ifnames = smap_get(&nbs->other_config,
-                                         "dynamic-routing-vxlan-ifname");
-    if (vxlan_ifnames &&
-        check_dynamic_device_names("dynamic-routing-vxlan-ifname",
-                                   vxlan_ifnames)) {
-        smap_add(external_ids, "dynamic-routing-vxlan-ifname",
-                 vxlan_ifnames);
-    }
+        const char *vxlan_ifnames =
+            get_dynamic_device_name(nbs, "dynamic-routing-vxlan-ifname");
+        if (vxlan_ifnames &&
+            check_dynamic_device_names("dynamic-routing-vxlan-ifname",
+                                       vxlan_ifnames)) {
+            smap_add(external_ids, "dynamic-routing-vxlan-ifname",
+                     vxlan_ifnames);
+        }
 
-    const char *adv_ifname = smap_get(&nbs->other_config,
-                                      "dynamic-routing-advertise-ifname");
-    if (adv_ifname &&
-        check_dynamic_device_name("dynamic-routing-advertise-ifname",
-                                  adv_ifname)) {
-        smap_add(external_ids, "dynamic-routing-advertise-ifname",
-                 adv_ifname);
-    }
+        const char *adv_ifname =
+            get_dynamic_device_name(nbs, "dynamic-routing-advertise-ifname");
+        if (adv_ifname &&
+            check_dynamic_device_name("dynamic-routing-advertise-ifname",
+                                      adv_ifname)) {
+            smap_add(external_ids, "dynamic-routing-advertise-ifname",
+                     adv_ifname);
+        }
 
-    const char *redistribute =
-        smap_get(&nbs->other_config, "dynamic-routing-redistribute");
-    if (redistribute) {
-        smap_add(external_ids, "dynamic-routing-redistribute", redistribute);
-    }
+        const char *redistribute =
+            smap_get(&nbs->other_config, "dynamic-routing-redistribute");
+        if (redistribute) {
+            smap_add(external_ids, "dynamic-routing-redistribute",
+                     redistribute);
+        }
 
-    const char *prefer_evpn_arp_local =
-        smap_get(&nbs->other_config, "dynamic-routing-arp-prefer-local");
-    if (prefer_evpn_arp_local) {
-        smap_add(external_ids, "dynamic-routing-arp-prefer-local",
-                 prefer_evpn_arp_local);
+        const char *prefer_evpn_arp_local =
+            smap_get(&nbs->other_config, "dynamic-routing-arp-prefer-local");
+        if (prefer_evpn_arp_local) {
+            smap_add(external_ids, "dynamic-routing-arp-prefer-local",
+                     prefer_evpn_arp_local);
+        }
     }
 
     /* For backwards-compatibility, also store the NB UUID in
