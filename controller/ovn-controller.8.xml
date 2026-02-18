@@ -426,8 +426,7 @@
       <dt><code>external_ids:ovn-evpn-vxlan-ports</code></dt>
       <dd>
         Comma separated list of UDP ports used as a destination port for
-        the EVPN tunnels created by this ovn-controller. NOTE: this feature is
-        experimental and may be subject to removal/change in the future.
+        the EVPN tunnels created by this ovn-controller.
       </dd>
 
       <dt><code>external_ids:ovn-evpn-local-ip</code></dt>
@@ -437,8 +436,7 @@
         can be specified by the CMS according to the following syntax:
         <code>external_ids:ovn-evpn-local-ip=vni0-IPv4,vni1-IPv4,
         vni1-IPv6,IPv4,IPv6</code>, where if no VNI value is specified,
-        OVN will use the provided IP as default IP. NOTE: this feature
-        is experimental and may be subject to removal/change in the future.
+        OVN will use the provided IP as default IP.
       </dd>
     </dl>
 
