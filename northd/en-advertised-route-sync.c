@@ -470,69 +470,6 @@ build_lb_routes(const struct ovn_datapath *od,
     }
 }
 
-void *
-en_dynamic_routes_init(struct engine_node *node OVS_UNUSED,
-                       struct engine_arg *arg OVS_UNUSED)
-{
-    struct dynamic_routes_data *data = xmalloc(sizeof *data);
-    *data = (struct dynamic_routes_data) {
-        .routes = HMAP_INITIALIZER(&data->routes),
-    };
-
-    return data;
-}
-
-static void
-en_dynamic_routes_clear(struct dynamic_routes_data *data)
-{
-    struct ar_entry *ar;
-    HMAP_FOR_EACH_POP (ar, hmap_node, &data->routes) {
-        ar_entry_free(ar);
-    }
-}
-void
-en_dynamic_routes_cleanup(void *data_)
-{
-    struct dynamic_routes_data *data = data_;
-
-    en_dynamic_routes_clear(data);
-    hmap_destroy(&data->routes);
-}
-
-enum engine_node_state
-en_dynamic_routes_run(struct engine_node *node, void *data)
-{
-    struct dynamic_routes_data *dynamic_routes_data = data;
-    struct northd_data *northd_data = engine_get_input_data("northd", node);
-    struct ed_type_lr_stateful *lr_stateful_data =
-        engine_get_input_data("lr_stateful", node);
-
-    en_dynamic_routes_clear(data);
-
-    const struct lr_stateful_record *lr_stateful_rec;
-    HMAP_FOR_EACH (lr_stateful_rec, key_node,
-                   &lr_stateful_data->table.entries) {
-        const struct ovn_datapath *od =
-            ovn_datapaths_find_by_index(&northd_data->lr_datapaths,
-                                        lr_stateful_rec->lr_index);
-        if (!od->dynamic_routing) {
-            continue;
-        }
-        build_nat_routes(od, lr_stateful_rec->lrnat_rec,
-                         &northd_data->ls_ports,
-                         &dynamic_routes_data->routes);
-        build_nat_connected_routes(od, &lr_stateful_data->table,
-                                   &northd_data->ls_ports,
-                                   &dynamic_routes_data->routes);
-
-        build_lb_routes(od, lr_stateful_rec->lb_ips,
-                        &dynamic_routes_data->routes);
-        build_lb_connected_routes(od, &lr_stateful_data->table,
-                                  &dynamic_routes_data->routes);
-    }
-    return EN_UPDATED;
-}
-
 static void
 publish_lport_addresses(struct hmap *sync_routes,
                         const struct ovn_datapath *od,
@@ -632,6 +569,70 @@ publish_host_routes(struct hmap *sync_routes,
             }
         }
     }
+}
+
+void *
+en_dynamic_routes_init(struct engine_node *node OVS_UNUSED,
+                       struct engine_arg *arg OVS_UNUSED)
+{
+    struct dynamic_routes_data *data = xmalloc(sizeof *data);
+    *data = (struct dynamic_routes_data) {
+        .routes = HMAP_INITIALIZER(&data->routes),
+    };
+
+    return data;
+}
+
+static void
+en_dynamic_routes_clear(struct dynamic_routes_data *data)
+{
+    struct ar_entry *ar;
+    HMAP_FOR_EACH_POP (ar, hmap_node, &data->routes) {
+        ar_entry_free(ar);
+    }
+}
+
+void
+en_dynamic_routes_cleanup(void *data_)
+{
+    struct dynamic_routes_data *data = data_;
+
+    en_dynamic_routes_clear(data);
+    hmap_destroy(&data->routes);
+}
+
+enum engine_node_state
+en_dynamic_routes_run(struct engine_node *node, void *data)
+{
+    struct dynamic_routes_data *dynamic_routes_data = data;
+    struct northd_data *northd_data = engine_get_input_data("northd", node);
+    struct ed_type_lr_stateful *lr_stateful_data =
+        engine_get_input_data("lr_stateful", node);
+
+    en_dynamic_routes_clear(data);
+
+    const struct lr_stateful_record *lr_stateful_rec;
+    HMAP_FOR_EACH (lr_stateful_rec, key_node,
+                   &lr_stateful_data->table.entries) {
+        const struct ovn_datapath *od =
+            ovn_datapaths_find_by_index(&northd_data->lr_datapaths,
+                                        lr_stateful_rec->lr_index);
+        if (!od->dynamic_routing) {
+            continue;
+        }
+        build_nat_routes(od, lr_stateful_rec->lrnat_rec,
+                         &northd_data->ls_ports,
+                         &dynamic_routes_data->routes);
+        build_nat_connected_routes(od, &lr_stateful_data->table,
+                                   &northd_data->ls_ports,
+                                   &dynamic_routes_data->routes);
+
+        build_lb_routes(od, lr_stateful_rec->lb_ips,
+                        &dynamic_routes_data->routes);
+        build_lb_connected_routes(od, &lr_stateful_data->table,
+                                  &dynamic_routes_data->routes);
+    }
+    return EN_UPDATED;
 }
 
 static bool
