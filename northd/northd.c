@@ -12323,8 +12323,10 @@ route_source_to_offset(enum route_source source)
         return ROUTE_PRIO_OFFSET_STATIC;
     case ROUTE_SOURCE_LEARNED:
         return ROUTE_PRIO_OFFSET_LEARNED;
+    /* Dynamic route types (NAT, LB, and connected-as-host) are not used. */
     case ROUTE_SOURCE_NAT:
     case ROUTE_SOURCE_LB:
+    case ROUTE_SOURCE_CONNECTED_AS_HOST:
     default:
         OVS_NOT_REACHED();
     }

@@ -220,15 +220,13 @@ digraph "Incremental-Processing-Engine" {
 	SB_port_binding -> ecmp_nexthop [[label=""]];
 	SB_mac_binding -> ecmp_nexthop [[label="ecmp_nexthop_mac_binding_handler"]];
 	dynamic_routes [[style=filled, shape=box, fillcolor=white, label="dynamic_routes"]];
-	lr_stateful -> dynamic_routes [[label=""]];
-	northd -> dynamic_routes [[label="engine_noop_handler"]];
+	lr_stateful -> dynamic_routes [[label="dynamic_routes_lr_stateful_change_handler"]];
+	northd -> dynamic_routes [[label="dynamic_routes_northd_change_handler"]];
 	SB_advertised_route [[style=filled, shape=box, fillcolor=white, label="SB_advertised_route"]];
 	advertised_route_sync [[style=filled, shape=box, fillcolor=white, label="advertised_route_sync"]];
 	routes -> advertised_route_sync [[label=""]];
 	dynamic_routes -> advertised_route_sync [[label=""]];
 	SB_advertised_route -> advertised_route_sync [[label=""]];
-	lr_stateful -> advertised_route_sync [[label="advertised_route_sync_lr_stateful_change_handler"]];
-	northd -> advertised_route_sync [[label="advertised_route_sync_northd_change_handler"]];
 	SB_advertised_mac_binding [[style=filled, shape=box, fillcolor=white, label="SB_advertised_mac_binding"]];
 	advertised_mac_binding_sync [[style=filled, shape=box, fillcolor=white, label="advertised_mac_binding_sync"]];
 	SB_port_binding -> advertised_mac_binding_sync [[label=""]];

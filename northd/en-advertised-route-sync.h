@@ -19,21 +19,17 @@
 #include "lib/inc-proc-eng.h"
 #include "lib/uuidset.h"
 
-struct advertised_route_sync_data {
-  /* Contains the uuids of all NB Logical Routers where we used a
-   * lr_stateful_record during computation. */
-  struct uuidset nb_lr;
-  /* Contains the uuids of all NB Logical Switches where we rely on port
-   * changes for host routes. */
-  struct uuidset nb_ls;
+struct dynamic_routes_data {
+    /* Stores struct ar_entry, one for each dynamic route. */
+    struct hmap routes;
+    /* Contains the uuids of all NB Logical Routers where we used a
+     * lr_stateful_record during computation. */
+    struct uuidset nb_lr;
+    /* Contains the uuids of all NB Logical Switches where we rely on port
+     * changes for host routes. */
+    struct uuidset nb_ls;
 };
 
-enum engine_input_handler_result
-advertised_route_sync_lr_stateful_change_handler(struct engine_node *,
-                                                 void *data);
-enum engine_input_handler_result
-advertised_route_sync_northd_change_handler(struct engine_node *,
-                                                 void *data);
 void *en_advertised_route_sync_init(struct engine_node *, struct engine_arg *);
 void en_advertised_route_sync_cleanup(void *data);
 enum engine_node_state en_advertised_route_sync_run(struct engine_node *,
@@ -42,6 +38,11 @@ enum engine_node_state en_advertised_route_sync_run(struct engine_node *,
 void *en_dynamic_routes_init(struct engine_node *, struct engine_arg *);
 void en_dynamic_routes_cleanup(void *data);
 enum engine_node_state en_dynamic_routes_run(struct engine_node *, void *data);
+enum engine_input_handler_result
+dynamic_routes_northd_change_handler(struct engine_node *node, void *data_);
+enum engine_input_handler_result
+dynamic_routes_lr_stateful_change_handler(struct engine_node *node,
+                                          void *data_);
 
 void *en_advertised_mac_binding_sync_init(struct engine_node *,
                                           struct engine_arg *);

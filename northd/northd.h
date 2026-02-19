@@ -222,11 +222,6 @@ struct routes_data {
     struct hmap bfd_active_connections;
 };
 
-struct dynamic_routes_data {
-    struct hmap routes; /* Stores struct ar_entry, one for each
-                         * dynamic route. */
-};
-
 struct route_policies_data {
     struct hmap route_policies;
     struct hmap bfd_active_connections;
@@ -834,6 +829,8 @@ enum route_source {
     ROUTE_SOURCE_NAT,
     /* The route is derived from a LB's VIP. */
     ROUTE_SOURCE_LB,
+    /* The route is derived from out_port of connected logical router. */
+    ROUTE_SOURCE_CONNECTED_AS_HOST,
 };
 
 struct parsed_route {
