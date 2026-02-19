@@ -111,6 +111,9 @@ Post v25.09.0
      based L4 field translation for stateful ACLs. When enabled allows proper
      handling of IP fragmentation in userspace datapaths. This option may break
      hardware offloading and is disabled by default.
+   - Added support for health check monitoring for Logical Switch Ports using
+     tcp, udp, and icmp protocols. The check status from SB database is
+     synchronized to NB database to health check status field for CMS needs.
 
 OVN v25.09.0 - xxx xx xxxx
 --------------------------
