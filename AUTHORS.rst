@@ -323,6 +323,7 @@ Ori Shoshan                        ori.shoshan@guardicore.com
 Padmanabhan Krishnan               kprad1@yahoo.com
 Panu Matilainen                    pmatilai@redhat.com
 Paraneetharan Chandrasekaran       paraneetharanc@gmail.com
+Panos Kostopoulos Kyrimis          panos.kostopouloskyrimis@canonical.com
 Paul Boca                          pboca@cloudbasesolutions.com
 Paul Fazzone                       pfazzone@vmware.com
 Paul Ingram
